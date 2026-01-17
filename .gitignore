@@ -2,6 +2,7 @@
 .env
 .envrc
 *.env.local
+vsphere-params.env
 
 # Kubeconfig files (sensitive)
 *.kubeconfig

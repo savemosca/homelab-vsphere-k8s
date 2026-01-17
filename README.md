@@ -5,6 +5,7 @@ Production-grade Kubernetes homelab running on vSphere 8 with ephemeral nodes, a
 ## Architecture Overview
 
 - **Infrastructure**: VMware vSphere 8 (single host: 10 cores/128GB RAM)
+- **Management**: Rancher v2.11.8 on K3s (srv26.mosca.lan) for centralized cluster management
 - **Kubernetes**: Vanilla K8s managed by Cluster API Provider vSphere (CAPV)
 - **Node OS**: Flatcar Container Linux (ephemeral, immutable)
 - **Networking**: Cilium CNI with eBPF dataplane
@@ -14,14 +15,16 @@ Production-grade Kubernetes homelab running on vSphere 8 with ephemeral nodes, a
 
 ## Repository Structure
 
-```
+```text
 homelab-vsphere-k8s/
-├── docs/                           # Documentation
-│   ├── 01-vsphere-setup.md        # vSphere prerequisites and configuration
-│   ├── 02-management-cluster.md    # K3s management cluster setup
-│   ├── 03-workload-cluster.md      # Production K8s cluster deployment
-│   ├── 04-autoscaling.md           # Cluster Autoscaler configuration
-│   └── 05-cicd-setup.md            # GitHub Actions integration
+├── docs/                              # Documentation
+│   ├── 00-rancher-upgrade.md          # Rancher upgrade guide (v2.11.0 → v2.11.8)
+│   ├── 01-vsphere-setup.md            # vSphere prerequisites and configuration
+│   ├── 02-management-cluster-rancher.md # CAPV setup on existing Rancher K3s
+│   ├── 03-workload-cluster.md         # Production K8s cluster deployment
+│   ├── 04-autoscaling.md              # Cluster Autoscaler configuration
+│   ├── 05-cicd-setup.md               # GitHub Actions integration
+│   └── 06-rancher-import.md           # Import workload cluster into Rancher
 │
 ├── infrastructure/
 │   ├── management-cluster/         # K3s + CAPV controller
@@ -90,12 +93,23 @@ homelab-vsphere-k8s/
 ### Prerequisites
 
 - vSphere 8 with vCenter credentials
+- Existing Rancher installation (srv26.mosca.lan) or fresh K3s install
 - vSphere namespace/resource pool configured
 - DHCP or static IP pool for VMs
 - ~500GB free datastore space
 - GitHub account for CI/CD
 
-### 1. Prepare vSphere Environment
+### 1. Upgrade Rancher (if existing installation)
+
+```bash
+# Backup and upgrade Rancher from v2.11.0 to v2.11.8
+# See detailed guide: docs/00-rancher-upgrade.md
+
+ssh administrator@srv26.mosca.lan
+# Follow backup and upgrade procedures
+```
+
+### 2. Prepare vSphere Environment
 
 ```bash
 # Follow detailed guide
@@ -103,41 +117,54 @@ cat docs/01-vsphere-setup.md
 
 # Upload Flatcar OVA to Content Library
 # Configure network and resource pool
+# Get vCenter SSL thumbprint
 ```
 
-### 2. Deploy Management Cluster
+### 3. Setup CAPV on Management Cluster (srv26)
 
 ```bash
-cd infrastructure/management-cluster
-./k3s-install.sh
-kubectl apply -f capv-init.yaml
+# Configure parameters
+cp infrastructure/vsphere-params.env.template ~/.cluster-api/vsphere-params.env
+nano ~/.cluster-api/vsphere-params.env  # Edit with your vSphere details
+
+# Install clusterctl and initialize CAPV
+# Follow: docs/02-management-cluster-rancher.md
+clusterctl init --infrastructure vsphere
 ```
 
-### 3. Create Workload Cluster
+### 4. Create Workload Cluster
 
 ```bash
-cd ../workload-cluster
-export VSPHERE_USERNAME="administrator@vsphere.local"
-export VSPHERE_PASSWORD="your-password"
-export VSPHERE_SERVER="vcenter.homelab.local"
+# Load vSphere parameters
+source ~/.cluster-api/vsphere-params.env
 
-clusterctl generate cluster homelab-k8s \
-  --infrastructure vsphere \
-  --kubernetes-version v1.28.5 \
-  --control-plane-machine-count 1 \
-  --worker-machine-count 2 \
-  | kubectl apply -f -
+# Generate cluster manifest
+./scripts/generate-cluster-manifest.sh
+
+# Deploy cluster
+export KUBECONFIG=~/.kube/srv26-config
+kubectl apply -f generated/cluster-full.yaml
 
 # Wait for cluster ready
-clusterctl describe cluster homelab-k8s
+watch kubectl get clusters,machines,vspheremachines
 ```
 
-### 4. Install Core Components
+### 5. Import Cluster into Rancher
 
 ```bash
-# Get kubeconfig for workload cluster
-clusterctl get kubeconfig homelab-k8s > ~/.kube/homelab-config
-export KUBECONFIG=~/.kube/homelab-config
+# Get workload cluster kubeconfig
+clusterctl get kubeconfig homelab-k8s > ~/.kube/homelab-k8s-config
+
+# Import via Rancher UI
+# Follow: docs/06-rancher-import.md
+# Rancher URL: https://rancher.savemosca.com
+```
+
+### 6. Install Core Components
+
+```bash
+# Switch to workload cluster
+export KUBECONFIG=~/.kube/homelab-k8s-config
 
 # Install Cilium CNI
 helm repo add cilium https://helm.cilium.io/
@@ -154,7 +181,7 @@ kubectl apply -f infrastructure/networking/metallb-config.yaml
 kubectl apply -f infrastructure/networking/nginx-ingress.yaml
 ```
 
-### 5. Deploy Applications
+### 7. Deploy Applications
 
 ```bash
 # Media stack
@@ -164,7 +191,7 @@ kubectl apply -k kubernetes/apps/media-stack/
 kubectl apply -k kubernetes/apps/pihole-cloudflared/
 ```
 
-### 6. Setup CI/CD
+### 8. Setup CI/CD
 
 Follow [docs/05-cicd-setup.md](docs/05-cicd-setup.md) to configure GitHub Actions.
 
@@ -172,11 +199,11 @@ Follow [docs/05-cicd-setup.md](docs/05-cicd-setup.md) to configure GitHub Action
 
 | Component | vCPU | RAM | Storage | Purpose |
 |-----------|------|-----|---------|---------|
-| Management Cluster | 2 | 4GB | 50GB | CAPV controller (K3s) |
+| srv26 (Management + Rancher) | 2+ | 4-6GB | 50GB | K3s + Rancher + CAPV controllers |
 | Control Plane | 2 | 8GB | 50GB | K8s control plane (etcd, API server) |
 | Worker 1 | 4 | 16GB | 100GB | Primary workloads |
-| Worker 2 | 2 | 8GB | 50GB | Autoscaling/HA |
-| **Total** | **8-10** | **32-40GB** | **250-350GB** | **~25-30% host capacity** |
+| Worker 2 | 4 | 16GB | 100GB | Workload HA |
+| **Total** | **12-14** | **44-54GB** | **300-350GB** | **~35-40% host capacity** |
 
 ## Autoscaling Configuration
 
@@ -186,9 +213,39 @@ Follow [docs/05-cicd-setup.md](docs/05-cicd-setup.md) to configure GitHub Action
 - **Scale-down delay**: 10 minutes idle
 - **VM startup time**: ~2-3 minutes (Flatcar + K8s join)
 
+## Architecture Diagram
+
+```text
+┌──────────────────────────────────────────────────────────┐
+│           srv26.mosca.lan (Management Cluster)           │
+│                                                          │
+│  ┌───────────────┐         ┌──────────────────────┐    │
+│  │ Rancher v2.11 │         │  CAPV Controllers    │    │
+│  │ • Web UI      │         │  • cluster-api       │    │
+│  │ • Multi-mgmt  │◄────────┤  • capv-controller   │────┼────┐
+│  │ • Monitoring  │         │  • kubeadm-bootstrap │    │    │
+│  └───────────────┘         └──────────────────────┘    │    │
+│                    K3s v1.32.3                          │    │
+└──────────────────────────────────────────────────────────┘    │
+                                                                │
+        Manages Infrastructure          Imports for Management  │
+                │                                               │
+                ▼                                               │
+┌────────────────────────────────────────────────────┐         │
+│       Workload Cluster (vSphere VMs)               │         │
+│  ┌──────────────┐  ┌────────────────────────────┐ │         │
+│  │ Control Plane│  │  Worker Nodes (2-5)        │ │◄────────┘
+│  │ • etcd       │  │  • Flatcar Linux           │ │
+│  │ • API Server │  │  • Auto-scaling (CAPV)     │ │
+│  │ • Scheduler  │  │  • Apps running here       │ │
+│  └──────────────┘  └────────────────────────────┘ │
+│              Kubernetes v1.32.3                    │
+└────────────────────────────────────────────────────┘
+```
+
 ## CI/CD Pipeline
 
-```
+```text
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
 │  Git Push   │────▶│GitHub Actions│────▶│   Deploy    │
 │             │     │              │     │             │
@@ -201,10 +258,11 @@ See [ci-cd/github-actions/](ci-cd/github-actions/) for workflow definitions.
 
 ## Monitoring
 
-Access Grafana dashboards:
-- **URL**: https://grafana.homelab.local (via Ingress)
-- **Metrics**: Cluster metrics, node stats, application performance
-- **Alerts**: Slack/email notifications for critical events
+Access monitoring dashboards:
+- **Rancher UI**: https://rancher.savemosca.com (cluster overview, resources)
+- **Grafana**: Deployed via Rancher Monitoring (cluster metrics, node stats, application performance)
+- **Prometheus**: Metrics collection and alerting
+- **Alerts**: Configured via Rancher for critical events
 
 ## Backup Strategy
 
