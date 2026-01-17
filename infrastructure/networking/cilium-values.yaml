@@ -1,0 +1,175 @@
+# Cilium Helm values for homelab vSphere deployment
+# Install with: helm install cilium cilium/cilium -f cilium-values.yaml -n kube-system
+
+# Basic cluster configuration
+cluster:
+  name: homelab-k8s
+  id: 1
+
+# IPv4 networking configuration
+ipam:
+  mode: kubernetes  # Use Kubernetes host-scope IPAM
+  operator:
+    clusterPoolIPv4PodCIDRList:
+      - 10.244.0.0/16
+
+# Enable eBPF-based dataplane (recommended)
+kubeProxyReplacement: strict  # Replace kube-proxy with eBPF
+k8sServiceHost: 192.168.1.100  # Control plane endpoint IP (update for your network)
+k8sServicePort: 6443
+
+# Hubble observability platform
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+    replicas: 1
+  ui:
+    enabled: true
+    replicas: 1
+    ingress:
+      enabled: true
+      hosts:
+        - hubble.homelab.local
+      annotations:
+        nginx.ingress.kubernetes.io/rewrite-target: /
+
+# Metrics and monitoring
+prometheus:
+  enabled: true
+  serviceMonitor:
+    enabled: true  # For Prometheus Operator
+
+operator:
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+# Network policies
+policyEnforcementMode: default  # Enable network policies by default
+
+# BGP (disabled for homelab, enable if using BGP routing)
+bgpControlPlane:
+  enabled: false
+
+# Bandwidth manager (traffic shaping)
+bandwidthManager:
+  enabled: true
+  bbr: false  # Disable BBR for homelab
+
+# Enable native routing (better performance)
+routingMode: native
+autoDirectNodeRoutes: true
+ipv4NativeRoutingCIDR: 10.244.0.0/16
+
+# Tunnel mode (disabled when using native routing)
+tunnelProtocol: disabled
+
+# Enable local redirect policy for better performance
+localRedirectPolicy: true
+
+# Security settings
+encryption:
+  enabled: false  # Disable WireGuard encryption for homelab (enable if needed)
+  type: wireguard
+
+# Container runtime integration
+containerRuntime:
+  integration: containerd
+  socketPath: /var/run/containerd/containerd.sock
+
+# Host firewall (eBPF-based)
+hostFirewall:
+  enabled: true
+
+# Enable IPv6 support (optional)
+ipv6:
+  enabled: false
+
+# Enable endpoint routes (performance optimization)
+enableEndpointRoutes: true
+
+# Resource requirements
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+operator:
+  replicas: 1  # Single replica for homelab
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Node selector (run on control plane if needed)
+# nodeSelector:
+#   node-role.kubernetes.io/control-plane: ""
+
+# Tolerations for control plane nodes
+tolerations:
+  - operator: Exists
+
+# CNI configuration
+cni:
+  binPath: /opt/cni/bin
+  confPath: /etc/cni/net.d
+  exclusive: true
+  customConf: false
+
+# Enable Cilium agent health check
+healthPort: 9879
+
+# IPv4 masquerading for external traffic
+enableIPv4Masquerade: true
+enableIPv4BIGTCP: false
+
+# Enable Maglev consistent hashing for load balancing
+loadBalancer:
+  algorithm: maglev
+  mode: dsr  # Direct Server Return for better performance
+
+# Enable session affinity
+sessionAffinity: true
+
+# vSphere specific settings
+extraEnv:
+  - name: ENABLE_RUNTIME_SOCK
+    value: "true"
+
+# Debug settings (disable in production)
+debug:
+  enabled: false
+
+# Update strategy
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+
+# Enable eBPF-based socket LB
+socketLB:
+  enabled: true
+  hostNamespaceOnly: false
+
+# Enable XDP acceleration (requires compatible NIC)
+enableXDPPrefilter: false
+
+# Install CRDs
+installCRDs: true
+
+# Cilium agent configuration
+agent: true
+
+# Enable L7 proxy
+l7Proxy: true
+
+# Enable local redirect for ClusterIP services
+enableLocalRedirectPolicy: true

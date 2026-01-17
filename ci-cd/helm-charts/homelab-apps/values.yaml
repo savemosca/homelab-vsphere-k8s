@@ -1,0 +1,144 @@
+# Default values for homelab-apps Helm chart
+
+# Global settings
+global:
+  domain: homelab.local
+  timezone: Europe/Rome
+  registry: ghcr.io
+
+# Radarr configuration
+radarr:
+  enabled: true
+  image:
+    repository: lscr.io/linuxserver/radarr
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  storage:
+    config:
+      size: 5Gi
+      storageClass: vsphere-thin
+    movies:
+      size: 200Gi
+      storageClass: vsphere-thin
+  ingress:
+    enabled: true
+    className: nginx
+    host: radarr.homelab.local
+    tls:
+      enabled: true
+      secretName: radarr-tls
+
+# Sonarr configuration
+sonarr:
+  enabled: true
+  image:
+    repository: lscr.io/linuxserver/sonarr
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  storage:
+    config:
+      size: 5Gi
+      storageClass: vsphere-thin
+    tvshows:
+      size: 200Gi
+      storageClass: vsphere-thin
+  ingress:
+    enabled: true
+    className: nginx
+    host: sonarr.homelab.local
+    tls:
+      enabled: true
+      secretName: sonarr-tls
+
+# Pihole configuration
+pihole:
+  enabled: true
+  image:
+    repository: pihole/pihole
+    tag: latest
+    pullPolicy: IfNotPresent
+  webPassword: changeme123  # CHANGE THIS!
+  cloudflared:
+    enabled: true
+    image:
+      repository: cloudflare/cloudflared
+      tag: latest
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  storage:
+    config:
+      size: 2Gi
+      storageClass: vsphere-thin
+  service:
+    type: LoadBalancer
+    loadBalancerIP: 192.168.1.53  # Update for your network
+  ingress:
+    enabled: true
+    className: nginx
+    host: pihole.homelab.local
+    tls:
+      enabled: true
+      secretName: pihole-tls
+
+# Shared storage for media
+sharedStorage:
+  movies:
+    size: 200Gi
+    storageClass: vsphere-thin
+    accessMode: ReadWriteMany
+  tvshows:
+    size: 200Gi
+    storageClass: vsphere-thin
+    accessMode: ReadWriteMany
+  downloads:
+    size: 100Gi
+    storageClass: vsphere-thin
+    accessMode: ReadWriteMany
+
+# Namespace configuration
+namespace:
+  media:
+    create: true
+    name: media
+    resourceQuota:
+      enabled: true
+      hard:
+        requests.cpu: "4"
+        requests.memory: 8Gi
+        limits.cpu: "8"
+        limits.memory: 16Gi
+  dns:
+    create: true
+    name: dns
+
+# Network policies
+networkPolicies:
+  enabled: true
+
+# Monitoring
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true

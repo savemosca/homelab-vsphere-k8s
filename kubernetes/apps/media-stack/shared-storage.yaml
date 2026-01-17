@@ -1,0 +1,117 @@
+---
+# Shared PVC for movies library
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-movies
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteMany  # Shared across Radarr, Sonarr, Plex
+  storageClassName: vsphere-thin
+  resources:
+    requests:
+      storage: 200Gi  # Adjust based on your needs
+
+---
+# Shared PVC for TV shows library
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-tvshows
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: vsphere-thin
+  resources:
+    requests:
+      storage: 200Gi
+
+---
+# Shared PVC for downloads
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-downloads
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: vsphere-thin
+  resources:
+    requests:
+      storage: 100Gi
+
+---
+# Note: ReadWriteMany (RWX) requires NFS or vSAN File Services
+# If using standard VMFS datastore (only supports ReadWriteOnce):
+# Option 1: Deploy NFS server in cluster and use nfs-subdir-external-provisioner
+# Option 2: Use vSAN File Services for RWX volumes
+# Option 3: Use separate RWO volumes per pod and manage with symlinks
+
+# Alternative for VMFS (ReadWriteOnce only):
+# Deploy an NFS server pod and use it for shared storage
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-server
+  namespace: media
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nfs-server
+  template:
+    metadata:
+      labels:
+        app: nfs-server
+    spec:
+      containers:
+        - name: nfs-server
+          image: itsthenetwork/nfs-server-alpine:latest
+          ports:
+            - containerPort: 2049
+              name: nfs
+          env:
+            - name: SHARED_DIRECTORY
+              value: "/exports"
+          volumeMounts:
+            - name: nfs-storage
+              mountPath: /exports
+          securityContext:
+            privileged: true
+      volumes:
+        - name: nfs-storage
+          persistentVolumeClaim:
+            claimName: nfs-server-storage
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-server-storage
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: vsphere-thick  # Use thick provisioning for NFS backing storage
+  resources:
+    requests:
+      storage: 500Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nfs-server
+  namespace: media
+spec:
+  selector:
+    app: nfs-server
+  ports:
+    - port: 2049
+      targetPort: 2049
+      name: nfs
+  clusterIP: None  # Headless service

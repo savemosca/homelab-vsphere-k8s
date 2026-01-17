@@ -1,0 +1,210 @@
+# Butane configuration for Flatcar Container Linux worker nodes
+# Convert to Ignition JSON with: butane < worker-node.bu > worker-node.ign
+
+variant: flatcar
+version: 1.0.0
+
+passwd:
+  users:
+    - name: core
+      ssh_authorized_keys:
+        - ssh-rsa AAAA...your-public-key-here  # Replace with your SSH public key
+      groups:
+        - sudo
+        - docker
+
+storage:
+  files:
+    # Kubernetes kubeadm join configuration (templated by CAPV)
+    - path: /etc/kubeadm.yml
+      mode: 0644
+      contents:
+        inline: |
+          # This file is populated by Cluster API bootstrap provider
+          # Content is injected during VM provisioning
+
+    # Containerd configuration optimized for Kubernetes
+    - path: /etc/containerd/config.toml
+      mode: 0644
+      contents:
+        inline: |
+          version = 2
+
+          [plugins]
+            [plugins."io.containerd.grpc.v1.cri"]
+              sandbox_image = "registry.k8s.io/pause:3.9"
+
+              [plugins."io.containerd.grpc.v1.cri".containerd]
+                snapshotter = "overlayfs"
+                default_runtime_name = "runc"
+
+                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+                  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                    runtime_type = "io.containerd.runc.v2"
+                    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+                      SystemdCgroup = true
+
+              [plugins."io.containerd.grpc.v1.cri".cni]
+                bin_dir = "/opt/cni/bin"
+                conf_dir = "/etc/cni/net.d"
+
+              [plugins."io.containerd.grpc.v1.cri".registry]
+                config_path = "/etc/containerd/certs.d"
+
+                [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
+                  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+                    endpoint = ["https://registry-1.docker.io"]
+                  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."ghcr.io"]
+                    endpoint = ["https://ghcr.io"]
+                  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry.k8s.io"]
+                    endpoint = ["https://registry.k8s.io"]
+
+    # Sysctl tuning for Kubernetes
+    - path: /etc/sysctl.d/99-kubernetes.conf
+      mode: 0644
+      contents:
+        inline: |
+          # IP forwarding
+          net.ipv4.ip_forward = 1
+          net.ipv6.conf.all.forwarding = 1
+
+          # Bridge netfilter (required for Cilium/Calico)
+          net.bridge.bridge-nf-call-iptables = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.bridge.bridge-nf-call-arptables = 1
+
+          # Networking performance
+          net.core.somaxconn = 32768
+          net.ipv4.tcp_max_syn_backlog = 8096
+          net.core.netdev_max_backlog = 5000
+
+          # Memory
+          vm.overcommit_memory = 1
+          vm.panic_on_oom = 0
+
+          # Filesystem
+          fs.inotify.max_user_instances = 8192
+          fs.inotify.max_user_watches = 524288
+
+    # Kernel module loading for container networking
+    - path: /etc/modules-load.d/kubernetes.conf
+      mode: 0644
+      contents:
+        inline: |
+          overlay
+          br_netfilter
+          ip_vs
+          ip_vs_rr
+          ip_vs_wrr
+          ip_vs_sh
+          nf_conntrack
+
+    # Kubelet systemd drop-in for cloud-provider
+    - path: /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+      mode: 0644
+      contents:
+        inline: |
+          [Service]
+          Environment="KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf"
+          Environment="KUBELET_CONFIG_ARGS=--config=/var/lib/kubelet/config.yaml"
+          Environment="KUBELET_EXTRA_ARGS=--cloud-provider=external --node-ip=${COREOS_CUSTOM_PRIVATE_IPV4}"
+          ExecStart=
+          ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_EXTRA_ARGS
+
+    # Automatic OS updates configuration (Flatcar locksmith)
+    - path: /etc/flatcar/update.conf
+      mode: 0644
+      contents:
+        inline: |
+          REBOOT_STRATEGY=off  # Disable automatic reboots (manage manually via kured)
+          GROUP=stable
+          SERVER=https://public.update.flatcar-linux.net/v1/update/
+
+    # containerd proxy configuration (if using corporate proxy)
+    # - path: /etc/systemd/system/containerd.service.d/http-proxy.conf
+    #   mode: 0644
+    #   contents:
+    #     inline: |
+    #       [Service]
+    #       Environment="HTTP_PROXY=http://proxy.example.com:8080"
+    #       Environment="HTTPS_PROXY=http://proxy.example.com:8080"
+    #       Environment="NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,192.168.0.0/16"
+
+  directories:
+    - path: /etc/kubernetes
+      mode: 0755
+    - path: /etc/kubernetes/manifests
+      mode: 0755
+    - path: /var/lib/kubelet
+      mode: 0755
+    - path: /opt/cni/bin
+      mode: 0755
+    - path: /etc/cni/net.d
+      mode: 0755
+
+systemd:
+  units:
+    # Enable containerd
+    - name: containerd.service
+      enabled: true
+
+    # Load kernel modules at boot
+    - name: systemd-modules-load.service
+      enabled: true
+
+    # Apply sysctl settings
+    - name: systemd-sysctl.service
+      enabled: true
+
+    # Disable swap (required for kubelet)
+    - name: swap.target
+      mask: true
+
+    # Custom service to prepare node before kubelet starts
+    - name: kubernetes-prereqs.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Kubernetes Prerequisites
+        Before=kubelet.service
+        After=containerd.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStart=/bin/sh -c '\
+          modprobe overlay && \
+          modprobe br_netfilter && \
+          sysctl --system && \
+          mkdir -p /opt/cni/bin /etc/cni/net.d /var/lib/kubelet /etc/kubernetes/manifests'
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # Enable kubelet (will be started by kubeadm)
+    - name: kubelet.service
+      enabled: true
+      dropins:
+        - name: 10-kubeadm.conf
+          contents: |
+            [Service]
+            Environment="KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf"
+            Environment="KUBELET_CONFIG_ARGS=--config=/var/lib/kubelet/config.yaml"
+            Environment="KUBELET_EXTRA_ARGS=--cloud-provider=external"
+            ExecStart=
+            ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_EXTRA_ARGS
+
+    # Enable automatic Flatcar updates (without reboots)
+    - name: locksmithd.service
+      enabled: false  # Disabled in favor of kured for controlled node reboots
+
+    # Enable time synchronization
+    - name: systemd-timesyncd.service
+      enabled: true
+
+# Kernel command line arguments (optional optimizations)
+# kernel_arguments:
+#   should_exist:
+#     - systemd.unified_cgroup_hierarchy=0  # Use cgroupv1 for compatibility
+#     - cgroup_enable=memory
+#     - cgroup_memory=1

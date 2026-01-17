@@ -1,0 +1,164 @@
+---
+# NGINX Ingress Controller installation
+# This deploys ingress-nginx with MetalLB LoadBalancer support
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/instance: ingress-nginx
+
+---
+# Install using Helm (recommended) or manifests:
+# helm upgrade --install ingress-nginx ingress-nginx \
+#   --repo https://kubernetes.github.io/ingress-nginx \
+#   --namespace ingress-nginx \
+#   --create-namespace \
+#   --values ingress-values.yaml
+
+# Alternatively, use kubectl:
+# kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.5/deploy/static/provider/cloud/deploy.yaml
+
+# Custom Helm values (save as ingress-values.yaml)
+---
+# controller:
+#   replicaCount: 2  # HA setup
+#
+#   service:
+#     type: LoadBalancer
+#     loadBalancerIP: 192.168.1.200  # Fixed IP from MetalLB pool
+#     externalTrafficPolicy: Local  # Preserve source IP
+#     annotations:
+#       metallb.universe.tf/address-pool: homelab-pool
+#
+#   resources:
+#     requests:
+#       cpu: 100m
+#       memory: 128Mi
+#     limits:
+#       cpu: 500m
+#       memory: 512Mi
+#
+#   config:
+#     # Global NGINX configuration
+#     use-forwarded-headers: "true"
+#     compute-full-forwarded-for: "true"
+#     use-proxy-protocol: "false"
+#
+#     # SSL/TLS configuration
+#     ssl-protocols: "TLSv1.2 TLSv1.3"
+#     ssl-ciphers: "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384"
+#
+#     # Performance tuning
+#     worker-processes: "4"
+#     max-worker-connections: "16384"
+#
+#     # Client body size limit
+#     proxy-body-size: "100m"
+#     client-body-buffer-size: "16k"
+#
+#     # Timeouts
+#     proxy-connect-timeout: "60"
+#     proxy-send-timeout: "60"
+#     proxy-read-timeout: "60"
+#
+#     # Rate limiting
+#     limit-req-status-code: "429"
+#     limit-conn-zone-variable: "$binary_remote_addr"
+#
+#   metrics:
+#     enabled: true
+#     serviceMonitor:
+#       enabled: true  # For Prometheus Operator
+#
+#   autoscaling:
+#     enabled: false  # Disable for homelab (fixed 2 replicas)
+#
+#   affinity:
+#     podAntiAffinity:
+#       preferredDuringSchedulingIgnoredDuringExecution:
+#         - weight: 100
+#           podAffinityTerm:
+#             labelSelector:
+#               matchLabels:
+#                 app.kubernetes.io/name: ingress-nginx
+#             topologyKey: kubernetes.io/hostname
+#
+#   nodeSelector:
+#     node-role.kubernetes.io/worker: "worker"
+#
+#   tolerations: []
+
+---
+# Default backend (optional 404 page)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: default-backend
+  namespace: ingress-nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: default-backend
+  template:
+    metadata:
+      labels:
+        app: default-backend
+    spec:
+      containers:
+        - name: default-backend
+          image: registry.k8s.io/defaultbackend-amd64:1.5
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 10m
+              memory: 20Mi
+            limits:
+              cpu: 50m
+              memory: 50Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: default-backend
+  namespace: ingress-nginx
+spec:
+  selector:
+    app: default-backend
+  ports:
+    - port: 80
+      targetPort: 8080
+
+---
+# Example Ingress resource with TLS
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: example-ingress
+#   namespace: default
+#   annotations:
+#     nginx.ingress.kubernetes.io/rewrite-target: /
+#     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+#     cert-manager.io/cluster-issuer: letsencrypt-prod
+# spec:
+#   ingressClassName: nginx
+#   tls:
+#     - hosts:
+#         - app.homelab.local
+#       secretName: app-tls-secret
+#   rules:
+#     - host: app.homelab.local
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: app-service
+#                 port:
+#                   number: 80

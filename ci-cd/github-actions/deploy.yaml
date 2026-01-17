@@ -1,0 +1,198 @@
+name: Deploy to Kubernetes
+
+on:
+  workflow_run:
+    workflows: ["Build and Push Container Image"]
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  KUBECTL_VERSION: '1.28.5'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    environment:
+      name: ${{ github.event.inputs.environment || 'production' }}
+      url: https://homelab.local
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download deployment artifacts
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-info
+          path: artifacts/
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+          # Verify connection
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Get image tag
+        id: image
+        run: |
+          if [ -f artifacts/image-tags.txt ]; then
+            IMAGE_TAG=$(head -n 1 artifacts/image-tags.txt)
+          else
+            IMAGE_TAG="ghcr.io/${{ github.repository }}:main"
+          fi
+          echo "tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "Using image: ${IMAGE_TAG}"
+
+      - name: Update Kubernetes manifests
+        run: |
+          # Update image tag in deployment files
+          find kubernetes/apps -name "*.yaml" -type f -exec \
+            sed -i "s|image:.*${{ github.repository }}.*|image: ${{ steps.image.outputs.tag }}|g" {} +
+
+          # Verify changes
+          echo "Updated manifests:"
+          git diff kubernetes/apps/ || true
+
+      - name: Deploy to Kubernetes
+        run: |
+          # Apply namespace and configs first
+          kubectl apply -f kubernetes/apps/media-stack/namespace.yaml
+          kubectl apply -f kubernetes/apps/media-stack/shared-storage.yaml
+
+          # Deploy applications
+          kubectl apply -k kubernetes/apps/media-stack/radarr/
+          kubectl apply -f kubernetes/apps/pihole-cloudflared/
+
+          echo "Deployment applied successfully"
+
+      - name: Wait for rollout
+        run: |
+          # Wait for deployments to roll out
+          NAMESPACES=("media" "dns")
+
+          for NS in "${NAMESPACES[@]}"; do
+            echo "Waiting for rollout in namespace: ${NS}"
+            kubectl rollout status deployment --all -n ${NS} --timeout=5m
+          done
+
+      - name: Verify deployment
+        run: |
+          echo "### Deployment Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check pod status
+          kubectl get pods -n media -o wide >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n dns -o wide >> $GITHUB_STEP_SUMMARY
+
+          # Check services
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Services" >> $GITHUB_STEP_SUMMARY
+          kubectl get svc -n media >> $GITHUB_STEP_SUMMARY
+          kubectl get svc -n dns >> $GITHUB_STEP_SUMMARY
+
+          # Check ingresses
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Ingresses" >> $GITHUB_STEP_SUMMARY
+          kubectl get ingress -A >> $GITHUB_STEP_SUMMARY
+
+      - name: Run smoke tests
+        run: |
+          # Wait for services to be ready
+          sleep 30
+
+          # Test Radarr
+          RADARR_IP=$(kubectl get svc radarr -n media -o jsonpath='{.spec.clusterIP}')
+          if curl -f -s "http://${RADARR_IP}:7878/ping" > /dev/null; then
+            echo "✅ Radarr health check passed"
+          else
+            echo "❌ Radarr health check failed"
+            exit 1
+          fi
+
+          # Test Pihole
+          PIHOLE_IP=$(kubectl get svc pihole-web -n dns -o jsonpath='{.spec.clusterIP}')
+          if curl -f -s "http://${PIHOLE_IP}/admin/" > /dev/null; then
+            echo "✅ Pihole health check passed"
+          else
+            echo "❌ Pihole health check failed"
+            exit 1
+          fi
+
+          echo "All smoke tests passed ✅"
+
+      - name: Notify deployment success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const message = `## Deployment Successful ✅
+
+            **Environment:** ${{ github.event.inputs.environment || 'production' }}
+            **Commit:** ${{ github.sha }}
+            **Image:** \`${{ steps.image.outputs.tag }}\`
+
+            **Deployed Services:**
+            - Radarr (media namespace)
+            - Pihole + Cloudflared (dns namespace)
+
+            **Access URLs:**
+            - Radarr: https://radarr.homelab.local
+            - Pihole: https://pihole.homelab.local
+
+            Deployed at: ${new Date().toISOString()}
+            `;
+
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: message
+            });
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed, initiating rollback..."
+
+          # Rollback deployments
+          kubectl rollout undo deployment radarr -n media
+          kubectl rollout undo deployment pihole -n dns
+
+          # Wait for rollback
+          kubectl rollout status deployment radarr -n media --timeout=3m
+          kubectl rollout status deployment pihole -n dns --timeout=3m
+
+          echo "Rollback completed"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f ~/.kube/config

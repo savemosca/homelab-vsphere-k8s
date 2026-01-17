@@ -1,0 +1,162 @@
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: homelab-k8s-workers
+  namespace: default
+  labels:
+    cluster.x-k8s.io/cluster-name: homelab-k8s
+spec:
+  clusterName: homelab-k8s
+  replicas: 2  # Initial worker count (autoscaler will adjust between min/max)
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: homelab-k8s
+      cluster.x-k8s.io/deployment-name: homelab-k8s-workers
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: homelab-k8s
+        cluster.x-k8s.io/deployment-name: homelab-k8s-workers
+        node-role.kubernetes.io/worker: ""
+    spec:
+      version: v1.28.5
+      clusterName: homelab-k8s
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: homelab-k8s-worker-bootstrap
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: VSphereMachineTemplate
+        name: homelab-k8s-worker-template
+      failureDomain: ""
+
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: homelab-k8s-worker-bootstrap
+  namespace: default
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          criSocket: /var/run/containerd/containerd.sock
+          kubeletExtraArgs:
+            cloud-provider: external
+            node-labels: "node.kubernetes.io/worker="
+            tls-cipher-suites: TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+          name: "{{ ds.meta_data.hostname }}"
+      preKubeadmCommands:
+        # Disable swap
+        - swapoff -a
+        - sed -i '/ swap / s/^/#/' /etc/fstab
+        # Load kernel modules
+        - modprobe overlay
+        - modprobe br_netfilter
+        # Sysctl for networking
+        - sysctl -w net.ipv4.ip_forward=1
+        - sysctl -w net.bridge.bridge-nf-call-iptables=1
+        - sysctl -w net.bridge.bridge-nf-call-ip6tables=1
+      postKubeadmCommands:
+        # Label node as worker
+        - kubectl label node $(hostname) node-role.kubernetes.io/worker=worker --kubeconfig=/etc/kubernetes/kubelet.conf || true
+      files:
+        # Containerd config (same as control plane)
+        - path: /etc/containerd/config.toml
+          owner: root:root
+          permissions: "0644"
+          content: |
+            version = 2
+            [plugins]
+              [plugins."io.containerd.grpc.v1.cri"]
+                sandbox_image = "registry.k8s.io/pause:3.9"
+                [plugins."io.containerd.grpc.v1.cri".containerd]
+                  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+                    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                      runtime_type = "io.containerd.runc.v2"
+                      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+                        SystemdCgroup = true
+                [plugins."io.containerd.grpc.v1.cri".registry]
+                  [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
+                    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+                      endpoint = ["https://registry-1.docker.io"]
+
+        # Sysctl persistence
+        - path: /etc/sysctl.d/99-kubernetes.conf
+          owner: root:root
+          permissions: "0644"
+          content: |
+            net.ipv4.ip_forward = 1
+            net.bridge.bridge-nf-call-iptables = 1
+            net.bridge.bridge-nf-call-ip6tables = 1
+            net.ipv4.conf.all.forwarding = 1
+            net.ipv6.conf.all.forwarding = 1
+
+        # Kernel modules
+        - path: /etc/modules-load.d/k8s.conf
+          owner: root:root
+          permissions: "0644"
+          content: |
+            overlay
+            br_netfilter
+
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: VSphereMachineTemplate
+metadata:
+  name: homelab-k8s-worker-template
+  namespace: default
+spec:
+  template:
+    spec:
+      cloneMode: linkedClone
+      datacenter: Datacenter
+      datastore: datastore1
+      diskGiB: 100  # Larger disk for worker nodes (applications, logs, images)
+      folder: k8s-homelab
+      memoryMiB: 16384  # 16GB RAM for worker nodes
+      network:
+        devices:
+          - dhcp4: true
+            networkName: VM Network
+      numCPUs: 4  # 4 vCPUs for application workloads
+      os: linux
+      powerOffMode: trySoft
+      resourcePool: k8s-homelab
+      server: vcenter.homelab.local
+      storagePolicyName: ""
+      template: flatcar-stable  # Ephemeral Flatcar OS
+      thumbprint: ""  # Same thumbprint as cluster.yaml
+
+---
+# Optional: Smaller worker template for autoscaling burst capacity
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: VSphereMachineTemplate
+metadata:
+  name: homelab-k8s-worker-small-template
+  namespace: default
+spec:
+  template:
+    spec:
+      cloneMode: linkedClone
+      datacenter: Datacenter
+      datastore: datastore1
+      diskGiB: 50  # Smaller disk for burst workers
+      folder: k8s-homelab
+      memoryMiB: 8192  # 8GB RAM
+      network:
+        devices:
+          - dhcp4: true
+            networkName: VM Network
+      numCPUs: 2  # 2 vCPUs
+      os: linux
+      powerOffMode: trySoft
+      resourcePool: k8s-homelab
+      server: vcenter.homelab.local
+      storagePolicyName: ""
+      template: flatcar-stable
+      thumbprint: ""

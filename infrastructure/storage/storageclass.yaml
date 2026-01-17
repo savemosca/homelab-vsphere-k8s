@@ -1,0 +1,110 @@
+---
+# Default StorageClass for vSphere CSI with thin provisioning
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: vsphere-thin
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: csi.vsphere.vmware.com
+parameters:
+  datastoreurl: "ds:///vmfs/volumes/datastore1"  # Update with your datastore URL
+  # Get datastore URL: govc datastore.info -json datastore1 | jq -r .datastores[0].info.url
+  storagepolicyname: ""  # Leave empty for default vSphere storage policy
+  # Or specify: "vSAN Default Storage Policy"
+  fstype: "ext4"
+allowVolumeExpansion: true
+reclaimPolicy: Delete  # Change to Retain for production data
+volumeBindingMode: WaitForFirstConsumer  # Better pod scheduling
+mountOptions:
+  - noatime
+
+---
+# StorageClass with immediate binding (for StatefulSets)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: vsphere-immediate
+provisioner: csi.vsphere.vmware.com
+parameters:
+  datastoreurl: "ds:///vmfs/volumes/datastore1"
+  storagepolicyname: ""
+  fstype: "ext4"
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+mountOptions:
+  - noatime
+
+---
+# StorageClass with thick provisioning (better performance)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: vsphere-thick
+provisioner: csi.vsphere.vmware.com
+parameters:
+  datastoreurl: "ds:///vmfs/volumes/datastore1"
+  storagepolicyname: ""
+  fstype: "ext4"
+  diskformat: "eagerzeroedthick"  # Pre-allocated thick disk
+allowVolumeExpansion: true
+reclaimPolicy: Retain  # Keep data after PVC deletion
+volumeBindingMode: WaitForFirstConsumer
+
+---
+# StorageClass for databases (high performance)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: vsphere-database
+provisioner: csi.vsphere.vmware.com
+parameters:
+  datastoreurl: "ds:///vmfs/volumes/datastore1"
+  storagepolicyname: ""
+  fstype: "ext4"
+  diskformat: "eagerzeroedthick"
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+mountOptions:
+  - noatime
+  - nodiratime
+
+---
+# Example PersistentVolumeClaim
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: example-pvc
+#   namespace: default
+# spec:
+#   accessModes:
+#     - ReadWriteOnce
+#   storageClassName: vsphere-thin
+#   resources:
+#     requests:
+#       storage: 10Gi
+
+---
+# VolumeSnapshotClass for CSI snapshots
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: vsphere-snapshot
+driver: csi.vsphere.vmware.com
+deletionPolicy: Delete
+parameters:
+  description: "vSphere CSI snapshot"
+
+---
+# Example VolumeSnapshot
+# apiVersion: snapshot.storage.k8s.io/v1
+# kind: VolumeSnapshot
+# metadata:
+#   name: pvc-snapshot
+#   namespace: default
+# spec:
+#   volumeSnapshotClassName: vsphere-snapshot
+#   source:
+#     persistentVolumeClaimName: example-pvc

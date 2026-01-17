@@ -1,0 +1,149 @@
+---
+# vSphere CSI Driver installation for persistent storage
+# Official installation: https://docs.vmware.com/en/VMware-vSphere-Container-Storage-Plug-in/
+
+# Prerequisites:
+# 1. vSphere 7.0+ or vSphere 8.0
+# 2. VM hardware version 15+
+# 3. disk.enableUUID=TRUE on all VMs
+# 4. vSphere Cloud Provider credentials
+
+# Create namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vmware-system-csi
+
+---
+# vSphere configuration secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vsphere-config-secret
+  namespace: vmware-system-csi
+type: Opaque
+stringData:
+  csi-vsphere.conf: |
+    [Global]
+    cluster-id = "homelab-k8s"
+    cluster-distribution = "kubernetes"
+
+    [VirtualCenter "vcenter.homelab.local"]
+    insecure-flag = "true"  # Set to false with valid SSL cert
+    user = "k8s-capv@vsphere.local"
+    password = "your-vsphere-password"
+    port = "443"
+    datacenters = "Datacenter"
+
+    [Workspace]
+    server = "vcenter.homelab.local"
+    datacenter = "Datacenter"
+    default-datastore = "datastore1"
+    resourcepool-path = "k8s-homelab"
+    folder = "k8s-homelab"
+
+    [Disk]
+    scsicontrollertype = "pvscsi"
+
+    [Snapshot]
+    global-max-snapshots-per-block-volume = 3
+
+---
+# Install CSI driver using Helm (recommended):
+# helm repo add vsphere-csi https://raw.githubusercontent.com/kubernetes-sigs/vsphere-csi-driver/master/manifests
+# helm install vsphere-csi vsphere-csi/vsphere-csi \
+#   --namespace vmware-system-csi \
+#   --create-namespace \
+#   --set config.enabled=true \
+#   --set config.vcenter=vcenter.homelab.local \
+#   --set config.username="k8s-capv@vsphere.local" \
+#   --set config.password="your-password" \
+#   --set config.datacenter=Datacenter
+
+# Or apply official manifests:
+# kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/vsphere-csi-driver/v3.1.2/manifests/vanilla/vsphere-csi-driver.yaml
+
+---
+# ServiceAccount for CSI driver
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vsphere-csi-controller
+  namespace: vmware-system-csi
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vsphere-csi-node
+  namespace: vmware-system-csi
+
+---
+# RBAC for CSI controller
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vsphere-csi-controller-role
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "pods", "configmaps", "resourcequotas"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims/status"]
+    verbs: ["patch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "update", "delete", "patch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "csinodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments/status"]
+    verbs: ["patch"]
+  - apiGroups: ["cns.vmware.com"]
+    resources: ["*"]
+    verbs: ["*"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots", "volumesnapshotclasses", "volumesnapshotcontents"]
+    verbs: ["*"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vsphere-csi-controller-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vsphere-csi-controller-role
+subjects:
+  - kind: ServiceAccount
+    name: vsphere-csi-controller
+    namespace: vmware-system-csi
+
+---
+# CSI Driver object
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: csi.vsphere.vmware.com
+spec:
+  attachRequired: true
+  podInfoOnMount: false
+  volumeLifecycleModes:
+    - Persistent
+    - Ephemeral
+
+---
+# Note: Full deployment manifests are lengthy.
+# Use official installation methods above.
+# See: https://docs.vmware.com/en/VMware-vSphere-Container-Storage-Plug-in/3.0/vmware-vsphere-csp-getting-started/GUID-6ECF2F0F-85FB-4E38-96F6-0C1F2CDB88A3.html

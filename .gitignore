@@ -1,0 +1,81 @@
+# Environment files
+.env
+.envrc
+*.env.local
+
+# Kubeconfig files (sensitive)
+*.kubeconfig
+*kubeconfig*
+.kube/
+
+# Cluster API local files
+clusterctl.yaml
+.cluster-api/
+
+# Terraform state (if using Terraform)
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# Helm generated files
+*.tgz
+charts/
+Chart.lock
+
+# Ignition files (generated)
+*.ign
+*.ign.base64
+
+# Secrets and credentials
+secrets/
+credentials/
+*.key
+*.pem
+*.crt
+*.p12
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Backup files
+*.backup
+*.bak
+backups/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+
+# Node
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build artifacts
+dist/
+build/
+artifacts/
+
+# Keep example files
+!*.example
+!example-*

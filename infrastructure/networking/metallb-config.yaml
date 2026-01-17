@@ -1,0 +1,103 @@
+---
+# MetalLB installation for LoadBalancer service support in homelab
+# Install MetalLB first:
+# kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.3/config/manifests/metallb-native.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: metallb-system
+  labels:
+    app.kubernetes.io/name: metallb
+
+---
+# IP Address Pool for LoadBalancer services
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: homelab-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.1.200-192.168.1.220  # Reserve 20 IPs for LoadBalancers (update for your network)
+  autoAssign: true
+  avoidBuggyIPs: false
+
+---
+# Secondary pool for specific services (optional)
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: critical-services
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.1.190-192.168.1.195  # Smaller pool for critical services
+  autoAssign: false  # Manual assignment required
+
+---
+# L2 Advertisement configuration (Layer 2 mode)
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: homelab-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - homelab-pool
+    - critical-services
+  interfaces:
+    - ens192  # Primary network interface (update based on your VM network interface)
+
+---
+# BGP Advertisement (if using BGP mode instead of L2)
+# apiVersion: metallb.io/v1beta1
+# kind: BGPAdvertisement
+# metadata:
+#   name: homelab-bgp
+#   namespace: metallb-system
+# spec:
+#   ipAddressPools:
+#     - homelab-pool
+#   aggregationLength: 32
+#   localPref: 100
+#   communities:
+#     - 65000:100
+
+---
+# BGP Peer configuration (if using BGP mode)
+# apiVersion: metallb.io/v1beta2
+# kind: BGPPeer
+# metadata:
+#   name: router-peer
+#   namespace: metallb-system
+# spec:
+#   myASN: 64500  # Your BGP AS number
+#   peerASN: 64501  # Router's BGP AS number
+#   peerAddress: 192.168.1.1  # Router IP
+#   sourceAddress: 192.168.1.100  # Control plane IP
+#   bfdProfile: default
+#   ebgpMultiHop: false
+
+---
+# Service selector for critical pool (example)
+# Apply this annotation to services that should use critical-services pool:
+# metallb.universe.tf/address-pool: critical-services
+
+# Example service using MetalLB:
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: nginx-lb
+#   annotations:
+#     metallb.universe.tf/address-pool: homelab-pool
+#     metallb.universe.tf/allow-shared-ip: "shared-key"  # Share IP with other services
+# spec:
+#   type: LoadBalancer
+#   loadBalancerIP: 192.168.1.200  # Optional: request specific IP
+#   ports:
+#     - port: 80
+#       targetPort: 80
+#   selector:
+#     app: nginx
