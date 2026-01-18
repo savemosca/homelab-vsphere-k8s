@@ -191,3 +191,93 @@ spec:
       storage: 1Ti
   volumeName: smb-media-downloads
   storageClassName: ""
+
+---
+# SMB PersistentVolume for books (ebooks/audiobooks)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-media-books
+spec:
+  capacity:
+    storage: 200Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  mountOptions:
+    - dir_mode=0777
+    - file_mode=0777
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+  csi:
+    driver: smb.csi.k8s.io
+    readOnly: false
+    volumeHandle: smb-media-books-handle
+    volumeAttributes:
+      source: "//srv05.mosca.lan/media-books"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-books
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 200Gi
+  volumeName: smb-media-books
+  storageClassName: ""
+
+---
+# SMB PersistentVolume for ROMs (retrogaming)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-media-roms
+spec:
+  capacity:
+    storage: 500Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  mountOptions:
+    - dir_mode=0777
+    - file_mode=0777
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+  csi:
+    driver: smb.csi.k8s.io
+    readOnly: false
+    volumeHandle: smb-media-roms-handle
+    volumeAttributes:
+      source: "//srv05.mosca.lan/media-roms"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-roms
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 500Gi
+  volumeName: smb-media-roms
+  storageClassName: ""

@@ -13,12 +13,16 @@ Stack completo per automazione media con protezione VPN Mullvad su Kubernetes.
 - **Radarr** (porta 7878) - Gestione film
 - **Sonarr** (porta 8989) - Gestione serie TV
 - **Lidarr** (porta 8686) - Gestione musica
+- **Readarr** (porta 8787) - Gestione ebook/audiolibri
 - **Bazarr** (porta 6767) - Gestione sottotitoli
 
 ### Media Request & Monitoring
 - **Overseerr** (porta 5055) - Sistema richieste media
 - **Tautulli** (porta 8181) - Monitoring Plex/Jellyfin
 - **Homarr** (porta 7575) - Dashboard centralizzata
+
+### Retrogaming
+- **Romm** (porta 8080) - ROM manager per retrogaming
 
 ## Prerequisiti
 
@@ -112,6 +116,7 @@ kubectl apply -f prowlarr/deployment.yaml
 kubectl apply -f radarr/deployment.yaml
 kubectl apply -f sonarr/deployment.yaml
 kubectl apply -f lidarr/deployment.yaml
+kubectl apply -f readarr/deployment.yaml
 kubectl apply -f bazarr/deployment.yaml
 
 # Deploy media request & monitoring
@@ -120,6 +125,9 @@ kubectl apply -f tautulli/deployment.yaml
 
 # Deploy dashboard
 kubectl apply -f homarr/deployment.yaml
+
+# Deploy retrogaming
+kubectl apply -f romm/deployment.yaml
 ```
 
 ### 3. Verifica Deployment
@@ -157,9 +165,9 @@ wget -qO- https://api.ipify.org
 
 1. Accedi a [https://prowlarr.savemosca.com](https://prowlarr.savemosca.com)
 2. Aggiungi indexer torrent e Usenet
-3. Collega Prowlarr a Radarr, Sonarr, Lidarr:
+3. Collega Prowlarr a Radarr, Sonarr, Lidarr, Readarr:
    - Settings → Apps → Add Application
-   - Usa gli URL interni: `http://radarr:7878`, `http://sonarr:8989`, `http://lidarr:8686`
+   - Usa gli URL interni: `http://radarr:7878`, `http://sonarr:8989`, `http://lidarr:8686`, `http://readarr:8787`
 
 ### 3. Configurazione Download Clients
 
@@ -175,21 +183,21 @@ wget -qO- https://api.ipify.org
 
 ### 4. Configurazione *arr Apps
 
-Per ogni app (Radarr, Sonarr, Lidarr):
+Per ogni app (Radarr, Sonarr, Lidarr, Readarr):
 
 1. Settings → Download Clients → Add
    - **Torrent**: qBittorrent
      - Host: `qbittorrent`
      - Port: `8080`
-     - Category: `movies` / `tv` / `music`
+     - Category: `movies` / `tv` / `music` / `books`
    - **Usenet**: SABnzbd
      - Host: `sabnzbd`
      - Port: `8081`
      - API Key: (dalla configurazione SABnzbd)
 
 2. Settings → Media Management
-   - Root Folder: `/movies` o `/tv` o `/music`
-   - Abilita "Rename Movies/Episodes"
+   - Root Folder: `/movies` o `/tv` o `/music` o `/books`
+   - Abilita "Rename Movies/Episodes" (o "Rename Books" per Readarr)
 
 ### 5. Configurazione Overseerr
 
@@ -218,9 +226,24 @@ Per ogni app (Radarr, Sonarr, Lidarr):
    - Radarr: `http://radarr:7878`
    - Sonarr: `http://sonarr:8989`
    - Lidarr: `http://lidarr:8686`
+   - Readarr: `http://readarr:8787`
    - Bazarr: `http://bazarr:6767`
    - Overseerr: `http://overseerr:5055`
    - Tautulli: `http://tautulli:8181`
+   - Romm: `http://romm:8080`
+
+### 8. Configurazione Romm
+
+1. Accedi a [https://romm.savemosca.com](https://romm.savemosca.com)
+2. Crea account amministratore al primo accesso
+3. Organizza le ROM per piattaforma nella directory `/roms`:
+   - `/roms/Nintendo/NES`
+   - `/roms/Nintendo/SNES`
+   - `/roms/Sega/Genesis`
+   - `/roms/Sony/PlayStation`
+4. Configura IGDB (opzionale) per metadata automatico:
+   - Ottieni API key da [https://api.igdb.com](https://api.igdb.com)
+   - Aggiungi Client ID e Secret nel ConfigMap `romm-config`
 
 ## URLs dei Servizi
 
@@ -235,9 +258,11 @@ Tutti i servizi sono esposti su **porta 443** tramite Traefik:
 | Radarr | https://radarr.savemosca.com |
 | Sonarr | https://sonarr.savemosca.com |
 | Lidarr | https://lidarr.savemosca.com |
+| Readarr | https://readarr.savemosca.com |
 | Bazarr | https://bazarr.savemosca.com |
 | Overseerr | https://overseerr.savemosca.com |
 | Tautulli | https://tautulli.savemosca.com |
+| Romm | https://romm.savemosca.com |
 
 ## Troubleshooting
 

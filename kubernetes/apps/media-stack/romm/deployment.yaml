@@ -1,0 +1,157 @@
+---
+# ConfigMap for Romm environment variables
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: romm-config
+  namespace: media
+data:
+  TZ: "Europe/Rome"
+  # Database configuration (SQLite by default)
+  DB_ENGINE: "sqlite"
+  # Optional: Enable IGDB integration for game metadata
+  # IGDB_CLIENT_ID: "your-igdb-client-id"
+  # IGDB_CLIENT_SECRET: "your-igdb-secret"
+
+---
+# PersistentVolumeClaim for Romm config/database
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: romm-config
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# PersistentVolumeClaim for Romm resources (covers, screenshots, etc.)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: romm-resources
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Romm Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: romm
+  namespace: media
+  labels:
+    app: romm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: romm
+  template:
+    metadata:
+      labels:
+        app: romm
+    spec:
+      containers:
+      - name: romm
+        image: rommapp/romm:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        envFrom:
+        - configMapRef:
+            name: romm-config
+        volumeMounts:
+        - name: config
+          mountPath: /romm/config
+        - name: resources
+          mountPath: /romm/resources
+        - name: library
+          mountPath: /romm/library
+        - name: roms
+          mountPath: /roms
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: romm-config
+      - name: resources
+        persistentVolumeClaim:
+          claimName: romm-resources
+      - name: library
+        persistentVolumeClaim:
+          claimName: romm-config
+      - name: roms
+        persistentVolumeClaim:
+          claimName: media-roms
+
+---
+# Romm Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: romm
+  namespace: media
+spec:
+  selector:
+    app: romm
+  ports:
+  - name: http
+    protocol: TCP
+    port: 443
+    targetPort: 8080
+
+---
+# Romm Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: romm
+  namespace: media
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - romm.savemosca.com
+    secretName: romm-tls
+  rules:
+  - host: romm.savemosca.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: romm
+            port:
+              number: 443

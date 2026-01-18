@@ -35,6 +35,8 @@ New-Item -Path "D:\Media" -ItemType Directory -Force
 New-Item -Path "D:\Media\Movies" -ItemType Directory -Force
 New-Item -Path "D:\Media\TVShows" -ItemType Directory -Force
 New-Item -Path "D:\Media\Music" -ItemType Directory -Force
+New-Item -Path "D:\Media\Books" -ItemType Directory -Force
+New-Item -Path "D:\Media\ROMs" -ItemType Directory -Force
 New-Item -Path "D:\Media\Downloads" -ItemType Directory -Force
 
 # Imposta permessi NTFS
@@ -47,6 +49,8 @@ Set-Acl "D:\Media" $Acl
 New-SmbShare -Name "media-movies" -Path "D:\Media\Movies" -FullAccess "media-user" -Description "Kubernetes Movies Storage"
 New-SmbShare -Name "media-tvshows" -Path "D:\Media\TVShows" -FullAccess "media-user" -Description "Kubernetes TV Shows Storage"
 New-SmbShare -Name "media-music" -Path "D:\Media\Music" -FullAccess "media-user" -Description "Kubernetes Music Storage"
+New-SmbShare -Name "media-books" -Path "D:\Media\Books" -FullAccess "media-user" -Description "Kubernetes Books Storage"
+New-SmbShare -Name "media-roms" -Path "D:\Media\ROMs" -FullAccess "media-user" -Description "Kubernetes ROMs Storage"
 New-SmbShare -Name "media-downloads" -Path "D:\Media\Downloads" -FullAccess "media-user" -Description "Kubernetes Downloads Storage"
 ```
 
@@ -58,6 +62,8 @@ New-Item -Path "C:\Data\Media" -ItemType Directory -Force
 New-Item -Path "C:\Data\Media\Movies" -ItemType Directory -Force
 New-Item -Path "C:\Data\Media\TVShows" -ItemType Directory -Force
 New-Item -Path "C:\Data\Media\Music" -ItemType Directory -Force
+New-Item -Path "C:\Data\Media\Books" -ItemType Directory -Force
+New-Item -Path "C:\Data\Media\ROMs" -ItemType Directory -Force
 New-Item -Path "C:\Data\Media\Downloads" -ItemType Directory -Force
 
 # Imposta permessi e crea share (come sopra, sostituendo il path)
