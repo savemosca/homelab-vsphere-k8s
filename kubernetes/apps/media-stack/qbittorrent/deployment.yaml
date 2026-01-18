@@ -1,0 +1,219 @@
+---
+# Secret for Mullvad VPN credentials
+# Create this secret manually:
+# kubectl create secret generic mullvad-vpn \
+#   --from-literal=account-number=YOUR_MULLVAD_ACCOUNT_NUMBER \
+#   -n media
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mullvad-vpn
+  namespace: media
+type: Opaque
+stringData:
+  account-number: "REPLACE_WITH_YOUR_MULLVAD_ACCOUNT_NUMBER"
+  # Get your account number from https://mullvad.net/account
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qbittorrent-config
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: vsphere-thin
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qbittorrent-config
+  namespace: media
+data:
+  TZ: "Europe/Rome"
+  PUID: "1000"
+  PGID: "1000"
+  WEBUI_PORT: "8080"
+  # VPN Configuration
+  VPN_SERVICE_PROVIDER: "mullvad"
+  VPN_TYPE: "wireguard"
+  SERVER_CITIES: "Milan"  # or Amsterdam, Stockholm, etc.
+  FIREWALL_OUTBOUND_SUBNETS: "10.0.0.0/8"  # Allow access to local network
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qbittorrent
+  namespace: media
+  labels:
+    app: qbittorrent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: qbittorrent
+  template:
+    metadata:
+      labels:
+        app: qbittorrent
+    spec:
+      containers:
+        # Gluetun VPN container
+        - name: gluetun
+          image: qmcgaw/gluetun:latest
+          ports:
+            - containerPort: 8080
+              name: qbit-webui
+            - containerPort: 6881
+              name: qbit-tcp
+              protocol: TCP
+            - containerPort: 6881
+              name: qbit-udp
+              protocol: UDP
+          env:
+            - name: VPN_SERVICE_PROVIDER
+              valueFrom:
+                configMapKeyRef:
+                  name: qbittorrent-config
+                  key: VPN_SERVICE_PROVIDER
+            - name: VPN_TYPE
+              valueFrom:
+                configMapKeyRef:
+                  name: qbittorrent-config
+                  key: VPN_TYPE
+            - name: WIREGUARD_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mullvad-vpn
+                  key: account-number
+            - name: SERVER_CITIES
+              valueFrom:
+                configMapKeyRef:
+                  name: qbittorrent-config
+                  key: SERVER_CITIES
+            - name: FIREWALL_OUTBOUND_SUBNETS
+              valueFrom:
+                configMapKeyRef:
+                  name: qbittorrent-config
+                  key: FIREWALL_OUTBOUND_SUBNETS
+            - name: TZ
+              valueFrom:
+                configMapKeyRef:
+                  name: qbittorrent-config
+                  key: TZ
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+        # qBittorrent container
+        - name: qbittorrent
+          image: lscr.io/linuxserver/qbittorrent:latest
+          env:
+            - name: PUID
+              valueFrom:
+                configMapKeyRef:
+                  name: qbittorrent-config
+                  key: PUID
+            - name: PGID
+              valueFrom:
+                configMapKeyRef:
+                  name: qbittorrent-config
+                  key: PGID
+            - name: TZ
+              valueFrom:
+                configMapKeyRef:
+                  name: qbittorrent-config
+                  key: TZ
+            - name: WEBUI_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: qbittorrent-config
+                  key: WEBUI_PORT
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: downloads
+              mountPath: /downloads
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          # Use gluetun's network stack
+          # No ports defined here - all networking goes through gluetun
+
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: qbittorrent-config
+        - name: downloads
+          persistentVolumeClaim:
+            claimName: media-downloads
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qbittorrent
+  namespace: media
+spec:
+  selector:
+    app: qbittorrent
+  ports:
+    - name: https
+      port: 443
+      targetPort: 8080
+    - name: tcp
+      port: 6881
+      targetPort: 6881
+      protocol: TCP
+    - name: udp
+      port: 6881
+      targetPort: 6881
+      protocol: UDP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: qbittorrent
+  namespace: media
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - qbittorrent.savemosca.com
+      secretName: qbittorrent-tls
+  rules:
+    - host: qbittorrent.savemosca.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: qbittorrent
+                port:
+                  number: 443

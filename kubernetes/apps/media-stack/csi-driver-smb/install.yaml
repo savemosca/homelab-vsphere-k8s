@@ -1,0 +1,26 @@
+# SMB CSI Driver Installation
+# Source: https://github.com/kubernetes-csi/csi-driver-smb
+# Version: v1.15.0 (latest stable)
+
+# Install using Helm (RECOMMENDED)
+# helm repo add csi-driver-smb https://raw.githubusercontent.com/kubernetes-csi/csi-driver-smb/master/charts
+# helm install csi-driver-smb csi-driver-smb/csi-driver-smb --namespace kube-system --version v1.15.0
+
+# Or install using kubectl with manifest URL:
+# kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/csi-driver-smb/master/deploy/v1.15.0/rbac-csi-smb-controller.yaml
+# kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/csi-driver-smb/master/deploy/v1.15.0/csi-smb-driverinfo.yaml
+# kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/csi-driver-smb/master/deploy/v1.15.0/csi-smb-controller.yaml
+# kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/csi-driver-smb/master/deploy/v1.15.0/csi-smb-node.yaml
+
+---
+# For reference: Minimal CSI Driver info (automatically created by Helm)
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: smb.csi.k8s.io
+spec:
+  attachRequired: false
+  podInfoOnMount: true
+  volumeLifecycleModes:
+    - Persistent
+    - Ephemeral

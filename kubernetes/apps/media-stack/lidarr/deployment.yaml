@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: radarr-config
+  name: lidarr-config
   namespace: media
 spec:
   accessModes:
@@ -16,10 +16,10 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: radarr-config
+  name: lidarr-config
   namespace: media
 data:
-  TZ: "Europe/Rome"  # Update to your timezone
+  TZ: "Europe/Rome"
   PUID: "1000"
   PGID: "1000"
 
@@ -27,49 +27,49 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: radarr
+  name: lidarr
   namespace: media
   labels:
-    app: radarr
+    app: lidarr
 spec:
   replicas: 1
   strategy:
-    type: Recreate  # Ensure single instance for config consistency
+    type: Recreate
   selector:
     matchLabels:
-      app: radarr
+      app: lidarr
   template:
     metadata:
       labels:
-        app: radarr
+        app: lidarr
     spec:
       containers:
-        - name: radarr
-          image: lscr.io/linuxserver/radarr:latest
+        - name: lidarr
+          image: lscr.io/linuxserver/lidarr:latest
           ports:
-            - containerPort: 7878
+            - containerPort: 8686
               name: http
           env:
             - name: TZ
               valueFrom:
                 configMapKeyRef:
-                  name: radarr-config
+                  name: lidarr-config
                   key: TZ
             - name: PUID
               valueFrom:
                 configMapKeyRef:
-                  name: radarr-config
+                  name: lidarr-config
                   key: PUID
             - name: PGID
               valueFrom:
                 configMapKeyRef:
-                  name: radarr-config
+                  name: lidarr-config
                   key: PGID
           volumeMounts:
             - name: config
               mountPath: /config
-            - name: movies
-              mountPath: /movies
+            - name: music
+              mountPath: /music
             - name: downloads
               mountPath: /downloads
           resources:
@@ -82,47 +82,46 @@ spec:
           livenessProbe:
             httpGet:
               path: /ping
-              port: 7878
+              port: 8686
             initialDelaySeconds: 30
             periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /ping
-              port: 7878
+              port: 8686
             initialDelaySeconds: 15
             periodSeconds: 5
+
       volumes:
         - name: config
           persistentVolumeClaim:
-            claimName: radarr-config
-        - name: movies
+            claimName: lidarr-config
+        - name: music
           persistentVolumeClaim:
-            claimName: media-movies  # Shared PVC for movies
+            claimName: media-music
         - name: downloads
           persistentVolumeClaim:
-            claimName: media-downloads  # Shared PVC for downloads
+            claimName: media-downloads
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: radarr
+  name: lidarr
   namespace: media
 spec:
   selector:
-    app: radarr
+    app: lidarr
   ports:
     - name: https
       port: 443
-      targetPort: 7878
+      targetPort: 8686
 
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: radarr
+  name: lidarr
   namespace: media
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -132,16 +131,16 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - radarr.savemosca.com
-      secretName: radarr-tls
+        - lidarr.savemosca.com
+      secretName: lidarr-tls
   rules:
-    - host: radarr.savemosca.com
+    - host: lidarr.savemosca.com
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: radarr
+                name: lidarr
                 port:
                   number: 443

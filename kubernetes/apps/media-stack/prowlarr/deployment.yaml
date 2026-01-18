@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: radarr-config
+  name: prowlarr-config
   namespace: media
 spec:
   accessModes:
@@ -16,10 +16,10 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: radarr-config
+  name: prowlarr-config
   namespace: media
 data:
-  TZ: "Europe/Rome"  # Update to your timezone
+  TZ: "Europe/Rome"
   PUID: "1000"
   PGID: "1000"
 
@@ -27,51 +27,47 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: radarr
+  name: prowlarr
   namespace: media
   labels:
-    app: radarr
+    app: prowlarr
 spec:
   replicas: 1
   strategy:
-    type: Recreate  # Ensure single instance for config consistency
+    type: Recreate
   selector:
     matchLabels:
-      app: radarr
+      app: prowlarr
   template:
     metadata:
       labels:
-        app: radarr
+        app: prowlarr
     spec:
       containers:
-        - name: radarr
-          image: lscr.io/linuxserver/radarr:latest
+        - name: prowlarr
+          image: lscr.io/linuxserver/prowlarr:latest
           ports:
-            - containerPort: 7878
+            - containerPort: 9696
               name: http
           env:
             - name: TZ
               valueFrom:
                 configMapKeyRef:
-                  name: radarr-config
+                  name: prowlarr-config
                   key: TZ
             - name: PUID
               valueFrom:
                 configMapKeyRef:
-                  name: radarr-config
+                  name: prowlarr-config
                   key: PUID
             - name: PGID
               valueFrom:
                 configMapKeyRef:
-                  name: radarr-config
+                  name: prowlarr-config
                   key: PGID
           volumeMounts:
             - name: config
               mountPath: /config
-            - name: movies
-              mountPath: /movies
-            - name: downloads
-              mountPath: /downloads
           resources:
             requests:
               cpu: 100m
@@ -82,47 +78,40 @@ spec:
           livenessProbe:
             httpGet:
               path: /ping
-              port: 7878
+              port: 9696
             initialDelaySeconds: 30
             periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /ping
-              port: 7878
+              port: 9696
             initialDelaySeconds: 15
             periodSeconds: 5
+
       volumes:
         - name: config
           persistentVolumeClaim:
-            claimName: radarr-config
-        - name: movies
-          persistentVolumeClaim:
-            claimName: media-movies  # Shared PVC for movies
-        - name: downloads
-          persistentVolumeClaim:
-            claimName: media-downloads  # Shared PVC for downloads
+            claimName: prowlarr-config
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: radarr
+  name: prowlarr
   namespace: media
 spec:
   selector:
-    app: radarr
+    app: prowlarr
   ports:
     - name: https
       port: 443
-      targetPort: 7878
+      targetPort: 9696
 
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: radarr
+  name: prowlarr
   namespace: media
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -132,16 +121,16 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - radarr.savemosca.com
-      secretName: radarr-tls
+        - prowlarr.savemosca.com
+      secretName: prowlarr-tls
   rules:
-    - host: radarr.savemosca.com
+    - host: prowlarr.savemosca.com
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: radarr
+                name: prowlarr
                 port:
                   number: 443

@@ -1,5 +1,51 @@
 ---
-# Shared PVC for movies library
+# Secret for SMB credentials
+# Create manually with:
+# kubectl create secret generic smb-credentials \
+#   --from-literal=username=DOMAIN\\username \
+#   --from-literal=password=yourpassword \
+#   -n media
+apiVersion: v1
+kind: Secret
+metadata:
+  name: smb-credentials
+  namespace: media
+type: Opaque
+stringData:
+  username: "media-user"  # Replace with your Windows domain/local user
+  password: "CHANGE_ME"   # Replace with actual password
+
+---
+# SMB PersistentVolume for movies
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-media-movies
+spec:
+  capacity:
+    storage: 500Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  mountOptions:
+    - dir_mode=0777
+    - file_mode=0777
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+  csi:
+    driver: smb.csi.k8s.io
+    readOnly: false
+    volumeHandle: smb-media-movies-handle
+    volumeAttributes:
+      source: "//srv05.mosca.lan/media-movies"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media
+
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -7,14 +53,44 @@ metadata:
   namespace: media
 spec:
   accessModes:
-    - ReadWriteMany  # Shared across Radarr, Sonarr, Plex
-  storageClassName: vsphere-thin
+    - ReadWriteMany
   resources:
     requests:
-      storage: 200Gi  # Adjust based on your needs
+      storage: 500Gi
+  volumeName: smb-media-movies
+  storageClassName: ""
 
 ---
-# Shared PVC for TV shows library
+# SMB PersistentVolume for TV shows
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-media-tvshows
+spec:
+  capacity:
+    storage: 500Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  mountOptions:
+    - dir_mode=0777
+    - file_mode=0777
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+  csi:
+    driver: smb.csi.k8s.io
+    readOnly: false
+    volumeHandle: smb-media-tvshows-handle
+    volumeAttributes:
+      source: "//srv05.mosca.lan/media-tvshows"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media
+
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -23,13 +99,88 @@ metadata:
 spec:
   accessModes:
     - ReadWriteMany
-  storageClassName: vsphere-thin
+  resources:
+    requests:
+      storage: 500Gi
+  volumeName: smb-media-tvshows
+  storageClassName: ""
+
+---
+# SMB PersistentVolume for music
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-media-music
+spec:
+  capacity:
+    storage: 200Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  mountOptions:
+    - dir_mode=0777
+    - file_mode=0777
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+  csi:
+    driver: smb.csi.k8s.io
+    readOnly: false
+    volumeHandle: smb-media-music-handle
+    volumeAttributes:
+      source: "//srv05.mosca.lan/media-music"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-music
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteMany
   resources:
     requests:
       storage: 200Gi
+  volumeName: smb-media-music
+  storageClassName: ""
 
 ---
-# Shared PVC for downloads
+# SMB PersistentVolume for downloads
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-media-downloads
+spec:
+  capacity:
+    storage: 1Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  mountOptions:
+    - dir_mode=0777
+    - file_mode=0777
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+  csi:
+    driver: smb.csi.k8s.io
+    readOnly: false
+    volumeHandle: smb-media-downloads-handle
+    volumeAttributes:
+      source: "//srv05.mosca.lan/media-downloads"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media
+
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -38,80 +189,8 @@ metadata:
 spec:
   accessModes:
     - ReadWriteMany
-  storageClassName: vsphere-thin
   resources:
     requests:
-      storage: 100Gi
-
----
-# Note: ReadWriteMany (RWX) requires NFS or vSAN File Services
-# If using standard VMFS datastore (only supports ReadWriteOnce):
-# Option 1: Deploy NFS server in cluster and use nfs-subdir-external-provisioner
-# Option 2: Use vSAN File Services for RWX volumes
-# Option 3: Use separate RWO volumes per pod and manage with symlinks
-
-# Alternative for VMFS (ReadWriteOnce only):
-# Deploy an NFS server pod and use it for shared storage
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: nfs-server
-  namespace: media
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: nfs-server
-  template:
-    metadata:
-      labels:
-        app: nfs-server
-    spec:
-      containers:
-        - name: nfs-server
-          image: itsthenetwork/nfs-server-alpine:latest
-          ports:
-            - containerPort: 2049
-              name: nfs
-          env:
-            - name: SHARED_DIRECTORY
-              value: "/exports"
-          volumeMounts:
-            - name: nfs-storage
-              mountPath: /exports
-          securityContext:
-            privileged: true
-      volumes:
-        - name: nfs-storage
-          persistentVolumeClaim:
-            claimName: nfs-server-storage
-
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: nfs-server-storage
-  namespace: media
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: vsphere-thick  # Use thick provisioning for NFS backing storage
-  resources:
-    requests:
-      storage: 500Gi
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: nfs-server
-  namespace: media
-spec:
-  selector:
-    app: nfs-server
-  ports:
-    - port: 2049
-      targetPort: 2049
-      name: nfs
-  clusterIP: None  # Headless service
+      storage: 1Ti
+  volumeName: smb-media-downloads
+  storageClassName: ""

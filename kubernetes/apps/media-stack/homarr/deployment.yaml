@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: radarr-config
+  name: homarr-config
   namespace: media
 spec:
   accessModes:
@@ -14,64 +14,80 @@ spec:
 
 ---
 apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: homarr-data
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: vsphere-thin
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: homarr-icons
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: vsphere-thin
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: radarr-config
+  name: homarr-config
   namespace: media
 data:
-  TZ: "Europe/Rome"  # Update to your timezone
-  PUID: "1000"
-  PGID: "1000"
+  TZ: "Europe/Rome"
 
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: radarr
+  name: homarr
   namespace: media
   labels:
-    app: radarr
+    app: homarr
 spec:
   replicas: 1
   strategy:
-    type: Recreate  # Ensure single instance for config consistency
+    type: Recreate
   selector:
     matchLabels:
-      app: radarr
+      app: homarr
   template:
     metadata:
       labels:
-        app: radarr
+        app: homarr
     spec:
       containers:
-        - name: radarr
-          image: lscr.io/linuxserver/radarr:latest
+        - name: homarr
+          image: ghcr.io/ajnart/homarr:latest
           ports:
-            - containerPort: 7878
+            - containerPort: 7575
               name: http
           env:
             - name: TZ
               valueFrom:
                 configMapKeyRef:
-                  name: radarr-config
+                  name: homarr-config
                   key: TZ
-            - name: PUID
-              valueFrom:
-                configMapKeyRef:
-                  name: radarr-config
-                  key: PUID
-            - name: PGID
-              valueFrom:
-                configMapKeyRef:
-                  name: radarr-config
-                  key: PGID
           volumeMounts:
             - name: config
-              mountPath: /config
-            - name: movies
-              mountPath: /movies
-            - name: downloads
-              mountPath: /downloads
+              mountPath: /app/data/configs
+            - name: data
+              mountPath: /data
+            - name: icons
+              mountPath: /app/public/icons
           resources:
             requests:
               cpu: 100m
@@ -81,48 +97,47 @@ spec:
               memory: 1Gi
           livenessProbe:
             httpGet:
-              path: /ping
-              port: 7878
+              path: /
+              port: 7575
             initialDelaySeconds: 30
             periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /ping
-              port: 7878
+              path: /
+              port: 7575
             initialDelaySeconds: 15
             periodSeconds: 5
+
       volumes:
         - name: config
           persistentVolumeClaim:
-            claimName: radarr-config
-        - name: movies
+            claimName: homarr-config
+        - name: data
           persistentVolumeClaim:
-            claimName: media-movies  # Shared PVC for movies
-        - name: downloads
+            claimName: homarr-data
+        - name: icons
           persistentVolumeClaim:
-            claimName: media-downloads  # Shared PVC for downloads
+            claimName: homarr-icons
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: radarr
+  name: homarr
   namespace: media
 spec:
   selector:
-    app: radarr
+    app: homarr
   ports:
     - name: https
       port: 443
-      targetPort: 7878
+      targetPort: 7575
 
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: radarr
+  name: homarr
   namespace: media
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -132,16 +147,16 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - radarr.savemosca.com
-      secretName: radarr-tls
+        - homarr.savemosca.com
+      secretName: homarr-tls
   rules:
-    - host: radarr.savemosca.com
+    - host: homarr.savemosca.com
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: radarr
+                name: homarr
                 port:
                   number: 443
