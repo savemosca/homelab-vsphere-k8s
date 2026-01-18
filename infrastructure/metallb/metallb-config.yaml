@@ -1,0 +1,48 @@
+# MetalLB Configuration
+# Pool di IP per LoadBalancer services su net-k8s-services (VLAN 37)
+#
+# Subnet: 192.168.14.0/25
+# Gateway: 192.168.14.1
+# Range disponibile: 192.168.14.2 - 192.168.14.126
+#
+# Workers hanno dual NIC:
+#   - ens160: net-k8s-workload (VLAN 36) - traffico pod/cluster
+#   - ens192: net-k8s-services (VLAN 37) - LoadBalancer IPs
+
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: homelab-pool
+  namespace: metallb-system
+spec:
+  # Range per LoadBalancer services (auto-assign)
+  addresses:
+    - 192.168.14.10-192.168.14.100
+  autoAssign: true
+
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: homelab-reserved
+  namespace: metallb-system
+spec:
+  # Pool riservato per servizi specifici (assegnazione manuale)
+  addresses:
+    - 192.168.14.101-192.168.14.120
+  autoAssign: false
+
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: homelab-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - homelab-pool
+    - homelab-reserved
+  # Annuncia solo sull'interfaccia VLAN 37
+  interfaces:
+    - ens192

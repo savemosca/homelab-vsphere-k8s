@@ -65,9 +65,12 @@ spec:
   folder: /DATACENTER01/vm/Kubernetes VMs
   pool: /DATACENTER01/host/CLUSTER01/Resources
 
-  # Network - Workers su workload network
+  # Network - Dual NIC:
+  #   NIC1: net-k8s-workload (VLAN 36) - Pod traffic, node communication
+  #   NIC2: net-k8s-services (VLAN 37) - MetalLB LoadBalancer IPs
   network:
     - /DATACENTER01/network/net-k8s-workload
+    - /DATACENTER01/network/net-k8s-services
 
   # VM template - Ubuntu 24.04
   contentLibrary: cnt-lbr-esxi01
@@ -88,6 +91,22 @@ spec:
       - open-iscsi
       - nfs-common
 
+    # Configura seconda NIC per VLAN 37 (services)
+    write_files:
+      - path: /etc/netplan/60-k8s-services.yaml
+        content: |
+          network:
+            version: 2
+            ethernets:
+              ens192:
+                dhcp4: true
+                dhcp4-overrides:
+                  use-routes: false
+                  use-dns: false
+
+    runcmd:
+      - netplan apply
+
 ---
 # Worker GPU - Ubuntu 24.04 con NVIDIA setup
 apiVersion: rke-machine-config.cattle.io/v1
@@ -106,9 +125,10 @@ spec:
   folder: /DATACENTER01/vm/Kubernetes VMs
   pool: /DATACENTER01/host/CLUSTER01/Resources
 
-  # Network - GPU worker su workload network
+  # Network - Dual NIC (come worker standard)
   network:
     - /DATACENTER01/network/net-k8s-workload
+    - /DATACENTER01/network/net-k8s-services
 
   # VM template - Ubuntu 24.04
   contentLibrary: cnt-lbr-esxi01
