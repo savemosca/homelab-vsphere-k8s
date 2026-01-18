@@ -1,0 +1,233 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: plex-config
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: vsphere-thin
+  resources:
+    requests:
+      storage: 50Gi
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: plex-config
+  namespace: media
+data:
+  TZ: "Europe/Rome"
+  PUID: "1000"
+  PGID: "1000"
+  VERSION: "docker"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plex
+  namespace: media
+  labels:
+    app: plex
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: plex
+  template:
+    metadata:
+      labels:
+        app: plex
+    spec:
+      # Schedule on GPU node
+      nodeSelector:
+        nvidia.com/gpu: "present"
+
+      containers:
+        - name: plex
+          image: lscr.io/linuxserver/plex:latest
+          ports:
+            - containerPort: 32400
+              name: plex-web
+              protocol: TCP
+            - containerPort: 1900
+              name: dlna-udp
+              protocol: UDP
+            - containerPort: 32410
+              name: gdm-1
+              protocol: UDP
+            - containerPort: 32412
+              name: gdm-2
+              protocol: UDP
+            - containerPort: 32413
+              name: gdm-3
+              protocol: UDP
+            - containerPort: 32414
+              name: gdm-4
+              protocol: UDP
+          env:
+            - name: TZ
+              valueFrom:
+                configMapKeyRef:
+                  name: plex-config
+                  key: TZ
+            - name: PUID
+              valueFrom:
+                configMapKeyRef:
+                  name: plex-config
+                  key: PUID
+            - name: PGID
+              valueFrom:
+                configMapKeyRef:
+                  name: plex-config
+                  key: PGID
+            - name: VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: plex-config
+                  key: VERSION
+            # NVIDIA GPU support
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "all"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: movies
+              mountPath: /movies
+            - name: tvshows
+              mountPath: /tv
+            - name: music
+              mountPath: /music
+            - name: transcode
+              mountPath: /transcode
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              cpu: 4000m
+              memory: 8Gi
+              # Request GPU
+              nvidia.com/gpu: 1
+          livenessProbe:
+            httpGet:
+              path: /identity
+              port: 32400
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /identity
+              port: 32400
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: plex-config
+        - name: movies
+          persistentVolumeClaim:
+            claimName: media-movies
+        - name: tvshows
+          persistentVolumeClaim:
+            claimName: media-tvshows
+        - name: music
+          persistentVolumeClaim:
+            claimName: media-music
+        - name: transcode
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: plex
+  namespace: media
+spec:
+  selector:
+    app: plex
+  ports:
+    - name: https
+      port: 443
+      targetPort: 32400
+
+---
+# LoadBalancer per accesso diretto (Plex preferisce IP diretto)
+apiVersion: v1
+kind: Service
+metadata:
+  name: plex-lb
+  namespace: media
+  annotations:
+    metallb.universe.tf/address-pool: homelab-pool
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 192.168.1.32  # CHANGE: IP per Plex
+  externalTrafficPolicy: Local
+  selector:
+    app: plex
+  ports:
+    - name: plex-web
+      port: 32400
+      targetPort: 32400
+      protocol: TCP
+    - name: dlna-udp
+      port: 1900
+      targetPort: 1900
+      protocol: UDP
+    - name: gdm-1
+      port: 32410
+      targetPort: 32410
+      protocol: UDP
+    - name: gdm-2
+      port: 32412
+      targetPort: 32412
+      protocol: UDP
+    - name: gdm-3
+      port: 32413
+      targetPort: 32413
+      protocol: UDP
+    - name: gdm-4
+      port: 32414
+      targetPort: 32414
+      protocol: UDP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: plex
+  namespace: media
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Plex needs large uploads for sync
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - plex.savemosca.com
+      secretName: plex-tls
+  rules:
+    - host: plex.savemosca.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: plex
+                port:
+                  number: 443

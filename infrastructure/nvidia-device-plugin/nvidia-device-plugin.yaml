@@ -1,0 +1,122 @@
+# NVIDIA Device Plugin for Kubernetes
+# Exposes nvidia.com/gpu resource to the cluster
+#
+# Prerequisites:
+# - Worker node with NVIDIA GPU (passthrough or vGPU)
+# - NVIDIA driver installed on worker
+# - NVIDIA Container Toolkit configured
+# - Node labeled: nvidia.com/gpu=present
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-operator
+  labels:
+    name: gpu-operator
+
+---
+# RuntimeClass for NVIDIA workloads
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: nvidia
+handler: nvidia
+scheduling:
+  nodeSelector:
+    nvidia.com/gpu: "present"
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-daemonset
+  namespace: gpu-operator
+spec:
+  selector:
+    matchLabels:
+      name: nvidia-device-plugin-ds
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        name: nvidia-device-plugin-ds
+    spec:
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: system-node-critical
+      nodeSelector:
+        nvidia.com/gpu: "present"
+      containers:
+        - name: nvidia-device-plugin-ctr
+          image: nvcr.io/nvidia/k8s-device-plugin:v0.14.3
+          env:
+            - name: FAIL_ON_INIT_ERROR
+              value: "false"
+            - name: DEVICE_LIST_STRATEGY
+              value: "envvar"
+            - name: DEVICE_ID_STRATEGY
+              value: "uuid"
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "all"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: device-plugin
+              mountPath: /var/lib/kubelet/device-plugins
+      volumes:
+        - name: device-plugin
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+
+---
+# GPU Feature Discovery (optional - adds detailed GPU labels)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-feature-discovery
+  namespace: gpu-operator
+  labels:
+    app: gpu-feature-discovery
+spec:
+  selector:
+    matchLabels:
+      app: gpu-feature-discovery
+  template:
+    metadata:
+      labels:
+        app: gpu-feature-discovery
+    spec:
+      nodeSelector:
+        nvidia.com/gpu: "present"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: gpu-feature-discovery
+          image: nvcr.io/nvidia/gpu-feature-discovery:v0.8.2
+          env:
+            - name: GFD_SLEEP_INTERVAL
+              value: "60s"
+            - name: GFD_FAIL_ON_INIT_ERROR
+              value: "true"
+          volumeMounts:
+            - name: host-sys
+              mountPath: /sys
+            - name: output-dir
+              mountPath: /etc/kubernetes/node-feature-discovery/features.d
+      volumes:
+        - name: host-sys
+          hostPath:
+            path: /sys
+        - name: output-dir
+          hostPath:
+            path: /etc/kubernetes/node-feature-discovery/features.d
