@@ -1,0 +1,70 @@
+{
+  "ignition": {
+    "version": "3.3.0"
+  },
+  "storage": {
+    "files": [
+      {
+        "path": "/etc/rancher/rke2/config.yaml",
+        "mode": 420,
+        "contents": {
+          "source": "data:text/plain;base64,${RKE2_CONFIG_BASE64}"
+        }
+      },
+      {
+        "path": "/etc/modules-load.d/k8s.conf",
+        "mode": 420,
+        "contents": {
+          "source": "data:text/plain;base64,YnJfbmV0ZmlsdGVyCm92ZXJsYXkKaXBfdnMKaXBfdnNfcnIKaXBfdnNfd3JyCmlwX3ZzX3NoCm5mX2Nvbm50cmFjawo="
+        }
+      },
+      {
+        "path": "/etc/sysctl.d/99-kubernetes.conf",
+        "mode": 420,
+        "contents": {
+          "source": "data:text/plain;base64,bmV0LmJyaWRnZS5icmlkZ2UtbmYtY2FsbC1pcHRhYmxlcyA9IDEKbmV0LmJyaWRnZS5icmlkZ2UtbmYtY2FsbC1pcDZ0YWJsZXMgPSAxCm5ldC5pcHY0LmlwX2ZvcndhcmQgPSAxCm5ldC5pcHY0LmNvbmYuYWxsLmZvcndhcmRpbmcgPSAxCm5ldC5pcHY2LmNvbmYuYWxsLmZvcndhcmRpbmcgPSAxCmZzLmlub3RpZnkubWF4X3VzZXJfd2F0Y2hlcyA9IDUyNDI4OApmcy5pbm90aWZ5Lm1heF91c2VyX2luc3RhbmNlcyA9IDUxMgp2bS5tYXhfbWFwX2NvdW50ID0gMjYyMTQ0Cg=="
+        }
+      },
+      {
+        "path": "/opt/rke2-install.sh",
+        "mode": 493,
+        "contents": {
+          "source": "data:text/plain;base64,IyEvYmluL2Jhc2gKc2V0IC1ldW8gcGlwZWZhaWwKCmVjaG8gIkluc3RhbGxpbmcgUktFMiBhZ2VudC4uLiIKCiMgSW5zdGFsbCBSS0UyIGFnZW50CmN1cmwgLXNmTCBodHRwczovL2dldC5ya2UyLmlvIHwgSU5TVEFMTF9SS0UyX1RZUEU9ImFnZW50IiBzaCAtCgojIEVuYWJsZSBhbmQgc3RhcnQgUktFMiBhZ2VudApzeXN0ZW1jdGwgZW5hYmxlIHJrZTItYWdlbnQuc2VydmljZQpzeXN0ZW1jdGwgc3RhcnQgcmtlMi1hZ2VudC5zZXJ2aWNlCgplY2hvICJSS0UyIGFnZW50IGluc3RhbGxhdGlvbiBjb21wbGV0ZSIK"
+        }
+      }
+    ],
+    "directories": [
+      {
+        "path": "/etc/rancher/rke2",
+        "mode": 493
+      },
+      {
+        "path": "/var/lib/rancher/rke2",
+        "mode": 493
+      }
+    ]
+  },
+  "systemd": {
+    "units": [
+      {
+        "name": "rke2-install.service",
+        "enabled": true,
+        "contents": "[Unit]\nDescription=Install RKE2 Agent\nWants=network-online.target\nAfter=network-online.target\nConditionPathExists=!/var/lib/rancher/rke2/bin/rke2\n\n[Service]\nType=oneshot\nExecStart=/opt/rke2-install.sh\nRemainAfterExit=true\nStandardOutput=journal+console\nStandardError=journal+console\n\n[Install]\nWantedBy=multi-user.target\n"
+      }
+    ]
+  },
+  "passwd": {
+    "users": [
+      {
+        "name": "core",
+        "sshAuthorizedKeys": [
+          "${SSH_PUBLIC_KEY}"
+        ],
+        "groups": [
+          "sudo",
+          "docker"
+        ]
+      }
+    ]
+  }
+}

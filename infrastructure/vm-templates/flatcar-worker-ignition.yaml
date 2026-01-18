@@ -1,0 +1,163 @@
+# Flatcar Linux Ignition Config for RKE2 Worker Nodes
+# This is a Butane config - convert to Ignition JSON before use:
+#   butane --pretty --strict flatcar-worker-ignition.yaml > flatcar-worker.ign
+#
+# Prerequisites:
+# - Flatcar Container Linux OVA imported in vSphere
+# - RKE2 cluster already bootstrapped with control plane
+# - Replace CHANGE markers with actual values
+
+variant: flatcar
+version: 1.0.0
+
+storage:
+  files:
+    # RKE2 agent config
+    - path: /etc/rancher/rke2/config.yaml
+      mode: 0644
+      contents:
+        inline: |
+          # CHANGE: RKE2 server URL (control plane)
+          server: https://rke2-cp.mosca.lan:9345
+
+          # CHANGE: Join token from control plane
+          # Get with: cat /var/lib/rancher/rke2/server/node-token
+          token: YOUR_RKE2_TOKEN
+
+          # Node labels
+          node-label:
+            - "node.kubernetes.io/pool=workers"
+            - "topology.kubernetes.io/zone=vsphere"
+
+          # Kubelet args for optimized performance
+          kubelet-arg:
+            - "max-pods=110"
+            - "image-gc-high-threshold=85"
+            - "image-gc-low-threshold=80"
+
+    # Kernel modules for networking
+    - path: /etc/modules-load.d/k8s.conf
+      mode: 0644
+      contents:
+        inline: |
+          br_netfilter
+          overlay
+          ip_vs
+          ip_vs_rr
+          ip_vs_wrr
+          ip_vs_sh
+          nf_conntrack
+
+    # Sysctl settings for Kubernetes
+    - path: /etc/sysctl.d/99-kubernetes.conf
+      mode: 0644
+      contents:
+        inline: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward = 1
+          net.ipv4.conf.all.forwarding = 1
+          net.ipv6.conf.all.forwarding = 1
+          fs.inotify.max_user_watches = 524288
+          fs.inotify.max_user_instances = 512
+          vm.max_map_count = 262144
+
+    # RKE2 install script
+    - path: /opt/rke2-install.sh
+      mode: 0755
+      contents:
+        inline: |
+          #!/bin/bash
+          set -euo pipefail
+
+          echo "Installing RKE2 agent..."
+
+          # Install RKE2 agent
+          curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="agent" sh -
+
+          # Enable and start RKE2 agent
+          systemctl enable rke2-agent.service
+          systemctl start rke2-agent.service
+
+          echo "RKE2 agent installation complete"
+
+    # Cleanup script for ephemeral behavior
+    - path: /opt/cleanup-on-shutdown.sh
+      mode: 0755
+      contents:
+        inline: |
+          #!/bin/bash
+          # Drain node before shutdown (optional)
+          # This allows graceful pod eviction
+
+          KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+          NODENAME=$(hostname)
+
+          if [ -f "$KUBECONFIG" ]; then
+            /var/lib/rancher/rke2/bin/kubectl \
+              --kubeconfig=$KUBECONFIG \
+              drain $NODENAME \
+              --ignore-daemonsets \
+              --delete-emptydir-data \
+              --force \
+              --grace-period=30 || true
+          fi
+
+  directories:
+    - path: /etc/rancher/rke2
+      mode: 0755
+    - path: /var/lib/rancher/rke2
+      mode: 0755
+
+systemd:
+  units:
+    # RKE2 agent installer service (runs once)
+    - name: rke2-install.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Install RKE2 Agent
+        Wants=network-online.target
+        After=network-online.target
+        ConditionPathExists=!/var/lib/rancher/rke2/bin/rke2
+
+        [Service]
+        Type=oneshot
+        ExecStart=/opt/rke2-install.sh
+        RemainAfterExit=true
+        StandardOutput=journal+console
+        StandardError=journal+console
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # Sysctl loader
+    - name: systemd-sysctl.service
+      enabled: true
+
+    # Optional: cleanup on shutdown
+    - name: node-cleanup.service
+      enabled: false  # Enable if you want graceful drain
+      contents: |
+        [Unit]
+        Description=Cleanup Kubernetes node before shutdown
+        DefaultDependencies=no
+        Before=shutdown.target reboot.target halt.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/opt/cleanup-on-shutdown.sh
+        TimeoutStartSec=60
+
+        [Install]
+        WantedBy=halt.target reboot.target shutdown.target
+
+passwd:
+  users:
+    - name: core
+      # CHANGE: Add your SSH public key
+      ssh_authorized_keys:
+        - "ssh-rsa YOUR_SSH_PUBLIC_KEY user@workstation"
+      groups:
+        - sudo
+        - docker
