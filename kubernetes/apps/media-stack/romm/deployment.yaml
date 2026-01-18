@@ -65,7 +65,7 @@ spec:
         image: rommapp/romm:latest
         ports:
         - containerPort: 8080
-          name: http
+          name: https
         envFrom:
         - configMapRef:
             name: romm-config
@@ -124,7 +124,7 @@ spec:
   selector:
     app: romm
   ports:
-  - name: http
+  - name: https
     protocol: TCP
     port: 443
     targetPort: 8080

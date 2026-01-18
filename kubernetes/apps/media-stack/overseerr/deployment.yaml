@@ -48,7 +48,7 @@ spec:
           image: lscr.io/linuxserver/overseerr:latest
           ports:
             - containerPort: 5055
-              name: http
+              name: https
           env:
             - name: TZ
               valueFrom:

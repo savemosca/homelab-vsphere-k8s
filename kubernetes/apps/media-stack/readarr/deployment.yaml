@@ -48,7 +48,7 @@ spec:
         image: lscr.io/linuxserver/readarr:develop
         ports:
         - containerPort: 8787
-          name: http
+          name: https
         envFrom:
         - configMapRef:
             name: readarr-config
@@ -88,7 +88,7 @@ spec:
   selector:
     app: readarr
   ports:
-  - name: http
+  - name: https
     protocol: TCP
     port: 443
     targetPort: 8787

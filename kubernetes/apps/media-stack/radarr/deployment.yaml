@@ -48,7 +48,7 @@ spec:
           image: lscr.io/linuxserver/radarr:latest
           ports:
             - containerPort: 7878
-              name: http
+              name: https
           env:
             - name: TZ
               valueFrom:

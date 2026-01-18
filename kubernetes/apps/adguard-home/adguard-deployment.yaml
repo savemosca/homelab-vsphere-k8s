@@ -218,4 +218,4 @@ spec:
               service:
                 name: adguard-web
                 port:
-                  number: 80
+                  number: 443

@@ -48,7 +48,7 @@ spec:
           image: lscr.io/linuxserver/lidarr:latest
           ports:
             - containerPort: 8686
-              name: http
+              name: https
           env:
             - name: TZ
               valueFrom:

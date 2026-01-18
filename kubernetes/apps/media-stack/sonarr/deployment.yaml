@@ -48,7 +48,7 @@ spec:
           image: lscr.io/linuxserver/sonarr:latest
           ports:
             - containerPort: 8989
-              name: http
+              name: https
           env:
             - name: TZ
               valueFrom:
