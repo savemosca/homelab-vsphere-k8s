@@ -54,7 +54,7 @@ spec:
         drainBeforeDelete: true
         machineConfigRef:
           kind: VmwarevsphereConfig
-          name: homelab-worker-flatcar
+          name: homelab-worker-standard
         labels:
           node.kubernetes.io/pool: workers
 

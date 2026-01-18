@@ -1,5 +1,10 @@
 # Machine Config per vSphere
 # Definisce le configurazioni VM per i diversi pool di nodi
+#
+# Reti K8s:
+#   - net-k8s-management (VLAN 35): Control plane, API, comunicazione nodi
+#   - net-k8s-workload (VLAN 36): Pod traffic, workload
+#   - net-k8s-services (VLAN 37): LoadBalancer, Ingress
 
 ---
 # Control Plane - Ubuntu 24.04
@@ -19,9 +24,9 @@ spec:
   folder: /DATACENTER01/vm/Kubernetes VMs
   pool: /DATACENTER01/host/CLUSTER01/Resources
 
-  # Network
+  # Network - Control Plane su management network
   network:
-    - /DATACENTER01/network/Server
+    - /DATACENTER01/network/net-k8s-management
 
   # VM template - Ubuntu 24.04 dalla Content Library
   contentLibrary: cnt-lbr-esxi01
@@ -43,11 +48,11 @@ spec:
       - nfs-common
 
 ---
-# Worker Standard - Flatcar Linux
+# Worker Standard - Ubuntu 24.04 (in attesa di Flatcar)
 apiVersion: rke-machine-config.cattle.io/v1
 kind: VmwarevsphereConfig
 metadata:
-  name: homelab-worker-flatcar
+  name: homelab-worker-standard
   namespace: fleet-default
 spec:
   # vSphere connection
@@ -60,12 +65,11 @@ spec:
   folder: /DATACENTER01/vm/Kubernetes VMs
   pool: /DATACENTER01/host/CLUSTER01/Resources
 
-  # Network
+  # Network - Workers su workload network
   network:
-    - /DATACENTER01/network/Server
+    - /DATACENTER01/network/net-k8s-workload
 
-  # VM template - Flatcar (da importare nella Content Library)
-  # Se non disponibile, usa Ubuntu
+  # VM template - Ubuntu 24.04
   contentLibrary: cnt-lbr-esxi01
   cloneFrom: noble-server-cloudimg-amd64
   creationType: library
@@ -102,9 +106,9 @@ spec:
   folder: /DATACENTER01/vm/Kubernetes VMs
   pool: /DATACENTER01/host/CLUSTER01/Resources
 
-  # Network
+  # Network - GPU worker su workload network
   network:
-    - /DATACENTER01/network/Server
+    - /DATACENTER01/network/net-k8s-workload
 
   # VM template - Ubuntu 24.04
   contentLibrary: cnt-lbr-esxi01
@@ -146,37 +150,36 @@ spec:
             tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
           apt-get update
           apt-get install -y nvidia-container-toolkit
+
+          # Crea script per configurare containerd dopo RKE2
+          cat > /usr/local/bin/configure-nvidia-containerd.sh << 'SCRIPT'
+    #!/bin/bash
+    set -e
+    until [ -f /var/lib/rancher/rke2/agent/etc/containerd/config.toml ]; do
+      sleep 10
+    done
+    nvidia-ctk runtime configure --runtime=containerd \
+      --config=/var/lib/rancher/rke2/agent/etc/containerd/config.toml
+    systemctl restart rke2-agent || true
+    SCRIPT
+          chmod +x /usr/local/bin/configure-nvidia-containerd.sh
+
+          # Crea systemd service
+          cat > /etc/systemd/system/nvidia-containerd-config.service << 'SERVICE'
+    [Unit]
+    Description=Configure NVIDIA runtime for RKE2 containerd
+    After=rke2-agent.service
+    Wants=rke2-agent.service
+
+    [Service]
+    Type=oneshot
+    ExecStart=/usr/local/bin/configure-nvidia-containerd.sh
+    RemainAfterExit=yes
+
+    [Install]
+    WantedBy=multi-user.target
+    SERVICE
+
+          systemctl daemon-reload
+          systemctl enable nvidia-containerd-config.service
         fi
-
-    write_files:
-      - path: /usr/local/bin/configure-nvidia-containerd.sh
-        permissions: '0755'
-        content: |
-          #!/bin/bash
-          # Eseguito dopo che RKE2 ha installato containerd
-          set -e
-          until [ -f /var/lib/rancher/rke2/agent/etc/containerd/config.toml ]; do
-            sleep 10
-          done
-          nvidia-ctk runtime configure --runtime=containerd \
-            --config=/var/lib/rancher/rke2/agent/etc/containerd/config.toml
-          systemctl restart rke2-agent || true
-
-      - path: /etc/systemd/system/nvidia-containerd-config.service
-        content: |
-          [Unit]
-          Description=Configure NVIDIA runtime for RKE2 containerd
-          After=rke2-agent.service
-          Wants=rke2-agent.service
-
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/local/bin/configure-nvidia-containerd.sh
-          RemainAfterExit=yes
-
-          [Install]
-          WantedBy=multi-user.target
-
-    runcmd:
-      - systemctl daemon-reload
-      - systemctl enable nvidia-containerd-config.service
