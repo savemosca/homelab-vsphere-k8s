@@ -5,9 +5,13 @@
 #   - net-k8s-management (VLAN 35): Control plane, API, comunicazione nodi
 #   - net-k8s-workload (VLAN 36): Pod traffic, workload
 #   - net-k8s-services (VLAN 37): LoadBalancer, Ingress
+#
+# Template VM (importati via scripts/import-vm-templates.sh):
+#   - flatcar-stable-<version>: Flatcar Container Linux per worker standard
+#   - ubuntu-24.04-lts-cloudimg: Ubuntu Server per control plane e GPU workers
 
 ---
-# Control Plane - Ubuntu 24.04
+# Control Plane - Ubuntu 24.04 LTS
 apiVersion: rke-machine-config.cattle.io/v1
 kind: VmwarevsphereConfig
 metadata:
@@ -28,9 +32,9 @@ spec:
   network:
     - /DATACENTER01/network/net-k8s-management
 
-  # VM template - Ubuntu 24.04 dalla Content Library
+  # VM template - Ubuntu 24.04 LTS dalla Content Library
   contentLibrary: cnt-lbr-esxi01
-  cloneFrom: noble-server-cloudimg-amd64
+  cloneFrom: ubuntu-24.04-lts-cloudimg
   creationType: library
 
   # VM resources - Control Plane
@@ -48,11 +52,11 @@ spec:
       - nfs-common
 
 ---
-# Worker Standard - Ubuntu 24.04 (in attesa di Flatcar)
+# Worker Standard - Flatcar Container Linux (Stable)
 apiVersion: rke-machine-config.cattle.io/v1
 kind: VmwarevsphereConfig
 metadata:
-  name: homelab-worker-standard
+  name: homelab-worker-flatcar
   namespace: fleet-default
 spec:
   # vSphere connection
@@ -72,9 +76,11 @@ spec:
     - /DATACENTER01/network/net-k8s-workload
     - /DATACENTER01/network/net-k8s-services
 
-  # VM template - Ubuntu 24.04
+  # VM template - Flatcar Stable dalla Content Library
+  # NOTA: Aggiorna il nome con la versione corrente dopo import
+  # Esegui: ./scripts/import-vm-templates.sh
   contentLibrary: cnt-lbr-esxi01
-  cloneFrom: noble-server-cloudimg-amd64
+  cloneFrom: flatcar-stable-4152.2.1
   creationType: library
 
   # VM resources - Worker
@@ -82,33 +88,13 @@ spec:
   memorySize: "8192"
   diskSize: "80000"
 
-  # Cloud-init per worker standard
-  cloudConfig: |
-    #cloud-config
-    package_update: true
-    packages:
-      - curl
-      - open-iscsi
-      - nfs-common
-
-    # Configura seconda NIC per VLAN 37 (services)
-    write_files:
-      - path: /etc/netplan/60-k8s-services.yaml
-        content: |
-          network:
-            version: 2
-            ethernets:
-              ens192:
-                dhcp4: true
-                dhcp4-overrides:
-                  use-routes: false
-                  use-dns: false
-
-    runcmd:
-      - netplan apply
+  # Flatcar Ignition config (base64 encoded)
+  # Flatcar usa Ignition, non cloud-init
+  # La configurazione viene passata via guestinfo
+  cloudConfig: ""
 
 ---
-# Worker GPU - Ubuntu 24.04 con NVIDIA setup
+# Worker GPU - Ubuntu 24.04 LTS con NVIDIA
 apiVersion: rke-machine-config.cattle.io/v1
 kind: VmwarevsphereConfig
 metadata:
@@ -130,9 +116,9 @@ spec:
     - /DATACENTER01/network/net-k8s-workload
     - /DATACENTER01/network/net-k8s-services
 
-  # VM template - Ubuntu 24.04
+  # VM template - Ubuntu 24.04 LTS dalla Content Library
   contentLibrary: cnt-lbr-esxi01
-  cloneFrom: noble-server-cloudimg-amd64
+  cloneFrom: ubuntu-24.04-lts-cloudimg
   creationType: library
 
   # VM resources - GPU Worker (più risorse)
@@ -152,7 +138,50 @@ spec:
       - open-iscsi
       - nfs-common
 
+    # Configura seconda NIC per VLAN 37 (services)
+    write_files:
+      - path: /etc/netplan/60-k8s-services.yaml
+        content: |
+          network:
+            version: 2
+            ethernets:
+              ens192:
+                dhcp4: true
+                dhcp4-overrides:
+                  use-routes: false
+                  use-dns: false
+
+      - path: /usr/local/bin/configure-nvidia-containerd.sh
+        permissions: '0755'
+        content: |
+          #!/bin/bash
+          set -e
+          until [ -f /var/lib/rancher/rke2/agent/etc/containerd/config.toml ]; do
+            sleep 10
+          done
+          nvidia-ctk runtime configure --runtime=containerd \
+            --config=/var/lib/rancher/rke2/agent/etc/containerd/config.toml
+          systemctl restart rke2-agent || true
+
+      - path: /etc/systemd/system/nvidia-containerd-config.service
+        content: |
+          [Unit]
+          Description=Configure NVIDIA runtime for RKE2 containerd
+          After=rke2-agent.service
+          Wants=rke2-agent.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/bin/configure-nvidia-containerd.sh
+          RemainAfterExit=yes
+
+          [Install]
+          WantedBy=multi-user.target
+
     runcmd:
+      # Applica netplan per seconda NIC
+      - netplan apply
+
       # Installa NVIDIA Driver se GPU presente
       - |
         if lspci | grep -i nvidia; then
@@ -171,35 +200,7 @@ spec:
           apt-get update
           apt-get install -y nvidia-container-toolkit
 
-          # Crea script per configurare containerd dopo RKE2
-          cat > /usr/local/bin/configure-nvidia-containerd.sh << 'SCRIPT'
-    #!/bin/bash
-    set -e
-    until [ -f /var/lib/rancher/rke2/agent/etc/containerd/config.toml ]; do
-      sleep 10
-    done
-    nvidia-ctk runtime configure --runtime=containerd \
-      --config=/var/lib/rancher/rke2/agent/etc/containerd/config.toml
-    systemctl restart rke2-agent || true
-    SCRIPT
-          chmod +x /usr/local/bin/configure-nvidia-containerd.sh
-
-          # Crea systemd service
-          cat > /etc/systemd/system/nvidia-containerd-config.service << 'SERVICE'
-    [Unit]
-    Description=Configure NVIDIA runtime for RKE2 containerd
-    After=rke2-agent.service
-    Wants=rke2-agent.service
-
-    [Service]
-    Type=oneshot
-    ExecStart=/usr/local/bin/configure-nvidia-containerd.sh
-    RemainAfterExit=yes
-
-    [Install]
-    WantedBy=multi-user.target
-    SERVICE
-
+          # Abilita servizio per configurare containerd dopo RKE2
           systemctl daemon-reload
           systemctl enable nvidia-containerd-config.service
         fi
