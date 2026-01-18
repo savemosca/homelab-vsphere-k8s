@@ -1,0 +1,131 @@
+# Cluster RKE2 - homelab-k8s
+# Cluster Kubernetes workload su vSphere gestito da Rancher
+
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+metadata:
+  name: homelab-k8s
+  namespace: fleet-default
+  annotations:
+    field.cattle.io/description: "Homelab Kubernetes workload cluster on vSphere"
+spec:
+  # Cloud credential reference
+  cloudCredentialSecretName: cattle-global-data:vsphere-homelab
+
+  # Kubernetes distribution
+  kubernetesVersion: v1.31.4+rke2r1
+
+  # RKE2 configuration
+  rkeConfig:
+    # Chart values for system components
+    chartValues:
+      # Cilium CNI
+      rke2-cilium:
+        hubble:
+          enabled: true
+          relay:
+            enabled: true
+          ui:
+            enabled: true
+
+    # Machine pools
+    machinePools:
+      # Control Plane pool
+      - name: control-plane
+        controlPlaneRole: true
+        etcdRole: true
+        workerRole: false
+        quantity: 1
+        unhealthyNodeTimeout: 0s  # Non ricreare automaticamente
+        drainBeforeDelete: true
+        machineConfigRef:
+          kind: VmwarevsphereConfig
+          name: homelab-control-plane
+        labels:
+          node-role.kubernetes.io/control-plane: "true"
+
+      # Worker pool standard
+      - name: workers
+        controlPlaneRole: false
+        etcdRole: false
+        workerRole: true
+        quantity: 2
+        unhealthyNodeTimeout: 5m  # Effimeri - ricrea se unhealthy
+        drainBeforeDelete: true
+        machineConfigRef:
+          kind: VmwarevsphereConfig
+          name: homelab-worker-flatcar
+        labels:
+          node.kubernetes.io/pool: workers
+
+      # GPU Worker pool
+      - name: gpu-workers
+        controlPlaneRole: false
+        etcdRole: false
+        workerRole: true
+        quantity: 0  # Inizia con 0, aggiungi manualmente dopo GPU passthrough
+        unhealthyNodeTimeout: 0s  # NON effimero - GPU è legata alla VM
+        drainBeforeDelete: true
+        machineConfigRef:
+          kind: VmwarevsphereConfig
+          name: homelab-worker-gpu
+        labels:
+          node.kubernetes.io/pool: gpu-workers
+          nvidia.com/gpu: "present"
+        taints:
+          - key: nvidia.com/gpu
+            value: "present"
+            effect: NoSchedule
+
+    # Machine global config
+    machineGlobalConfig:
+      # CNI
+      cni: cilium
+
+      # Disable default ingress controller (we'll use nginx)
+      disable:
+        - rke2-ingress-nginx
+
+      # Kubelet args
+      kubelet-arg:
+        - max-pods=110
+
+    # Machine selector config per nodi specifici
+    machineSelectorConfig:
+      - config:
+          # Protezione etcd
+          protect-kernel-defaults: false
+
+    # Registries configuration (opzionale)
+    # registries:
+    #   configs:
+    #     registry.example.com:
+    #       authConfigSecretName: registry-auth
+
+    # Upgrade strategy
+    upgradeStrategy:
+      controlPlaneConcurrency: "1"
+      controlPlaneDrainOptions:
+        enabled: true
+        deleteEmptyDirData: true
+        disableEviction: false
+        gracePeriod: 30
+        timeout: 300
+      workerConcurrency: "1"
+      workerDrainOptions:
+        enabled: true
+        deleteEmptyDirData: true
+        disableEviction: false
+        gracePeriod: 30
+        timeout: 300
+
+  # Local cluster auth endpoint (optional - for direct kubectl access)
+  localClusterAuthEndpoint:
+    enabled: true
+    fqdn: k8s.mosca.lan  # CHANGE: DNS per accesso diretto al cluster
+
+  # Agent env vars (inherited by all nodes)
+  agentEnvVars: []
+
+  # Default pod security admission
+  defaultPodSecurityAdmissionConfigurationTemplateName: ""

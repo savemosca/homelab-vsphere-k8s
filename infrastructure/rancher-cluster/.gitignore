@@ -1,0 +1,7 @@
+# Ignora file con credenziali reali
+cloud-credential.yaml
+vsphere-csi/vsphere-csi-secret.yaml
+
+# Kubeconfig generati
+*.kubeconfig
+kubeconfig-*

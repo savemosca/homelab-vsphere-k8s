@@ -1,0 +1,45 @@
+# StorageClasses per vSphere CSI
+# Da applicare dopo che il CSI driver è attivo
+
+---
+# Default StorageClass - Thin Provisioned
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: vsphere-thin
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: csi.vsphere.vmware.com
+parameters:
+  storagepolicyname: ""  # Usa default policy
+  # datastoreurl: "ds:///vmfs/volumes/..." # Opzionale: specifica datastore
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: Immediate
+
+---
+# Thick Eager Zeroed - Per workload che richiedono performance
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: vsphere-thick-eager
+provisioner: csi.vsphere.vmware.com
+parameters:
+  storagepolicyname: ""
+  # Thick eager zeroed per performance I/O migliori
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: Immediate
+
+---
+# Storage per database - Retain policy
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: vsphere-database
+provisioner: csi.vsphere.vmware.com
+parameters:
+  storagepolicyname: ""
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
