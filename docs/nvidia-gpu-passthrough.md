@@ -63,7 +63,7 @@ Output atteso:
 
 | Parametro | Valore |
 |-----------|--------|
-| Guest OS | Linux (Ubuntu 22.04 o RHEL 9) |
+| Guest OS | Linux (Ubuntu Server 24.04 LTS) |
 | CPU | 8+ vCPU |
 | RAM | 32+ GB |
 | Disk | 100+ GB |
@@ -93,18 +93,10 @@ Quando crei il cluster da Rancher, assicurati che il nodo GPU abbia:
 
 ### 2.1 Installare NVIDIA Driver
 
-**Ubuntu 22.04:**
+**Ubuntu Server 24.04 LTS (raccomandato):**
 ```bash
 sudo apt update
-sudo apt install -y nvidia-driver-535-server nvidia-utils-535-server
-sudo reboot
-```
-
-**RHEL 9:**
-```bash
-sudo dnf install -y epel-release
-sudo dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/cuda-rhel9.repo
-sudo dnf install -y nvidia-driver-535
+sudo apt install -y nvidia-driver-550-server nvidia-utils-550-server
 sudo reboot
 ```
 
@@ -117,7 +109,7 @@ nvidia-smi
 Output atteso:
 ```
 +-----------------------------------------------------------------------------+
-| NVIDIA-SMI 535.xx.xx    Driver Version: 535.xx.xx    CUDA Version: 12.x     |
+| NVIDIA-SMI 550.xx.xx    Driver Version: 550.xx.xx    CUDA Version: 12.x     |
 |-------------------------------+----------------------+----------------------+
 | GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
 | Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |

@@ -1,12 +1,12 @@
 #!/bin/bash
-# Script di bootstrap per worker GPU con RKE2
+# Script di bootstrap per worker GPU con RKE2 (Ubuntu Server 24.04 LTS)
 # Eseguito prima dell'installazione di RKE2
 #
 # In Rancher: Cluster → Machine Pools → GPU Pool → Cloud Config → runcmd
 
 set -e
 
-echo "=== GPU Worker Bootstrap ==="
+echo "=== GPU Worker Bootstrap (Ubuntu 24.04 LTS) ==="
 
 # Rileva se GPU presente
 if ! lspci | grep -qi nvidia; then
@@ -25,11 +25,11 @@ fi
 
 case $OS in
     ubuntu)
-        echo "Installing NVIDIA driver on Ubuntu..."
+        echo "Installing NVIDIA driver 550 on Ubuntu ${VERSION}..."
         apt-get update
         DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            nvidia-driver-535-server \
-            nvidia-utils-535-server
+            nvidia-driver-550-server \
+            nvidia-utils-550-server
 
         # NVIDIA Container Toolkit
         curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
@@ -43,21 +43,8 @@ case $OS in
         apt-get install -y nvidia-container-toolkit
         ;;
 
-    rhel|rocky|centos)
-        echo "Installing NVIDIA driver on RHEL/Rocky..."
-        dnf install -y epel-release
-        dnf config-manager --add-repo \
-            https://developer.download.nvidia.com/compute/cuda/repos/rhel${VERSION%%.*}/x86_64/cuda-rhel${VERSION%%.*}.repo
-        dnf install -y nvidia-driver-535
-
-        # NVIDIA Container Toolkit
-        curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo | \
-            tee /etc/yum.repos.d/nvidia-container-toolkit.repo
-        dnf install -y nvidia-container-toolkit
-        ;;
-
     *)
-        echo "Unsupported OS: $OS"
+        echo "Unsupported OS: $OS (expected Ubuntu 24.04)"
         exit 1
         ;;
 esac

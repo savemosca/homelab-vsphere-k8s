@@ -26,8 +26,8 @@ Configurazione per usare Flatcar Container Linux come OS per i worker node effim
 │                                                                 │
 │  Pool: "gpu-workers" (semi-persistente)                         │
 │  ┌─────────────────────────┐                                   │
-│  │ GPU-Worker              │  ← Ubuntu Server 22.04            │
-│  │ (NVIDIA T4 passthrough) │  ← Driver NVIDIA nativi           │
+│  │ GPU-Worker              │  ← Ubuntu Server 24.04 LTS        │
+│  │ (NVIDIA T4 passthrough) │  ← Driver NVIDIA 550              │
 │  └─────────────────────────┘                                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
