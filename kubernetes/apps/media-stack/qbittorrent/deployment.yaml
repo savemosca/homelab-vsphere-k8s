@@ -1,18 +1,10 @@
 ---
 # Secret for Mullvad VPN credentials
-# Create this secret manually:
+# See: kubernetes/apps/media-stack/secrets/mullvad-vpn-secret.yaml.template
+# Or create directly:
 # kubectl create secret generic mullvad-vpn \
 #   --from-literal=account-number=YOUR_MULLVAD_ACCOUNT_NUMBER \
 #   -n media
-apiVersion: v1
-kind: Secret
-metadata:
-  name: mullvad-vpn
-  namespace: media
-type: Opaque
-stringData:
-  account-number: "REPLACE_WITH_YOUR_MULLVAD_ACCOUNT_NUMBER"
-  # Get your account number from https://mullvad.net/account
 
 ---
 apiVersion: v1

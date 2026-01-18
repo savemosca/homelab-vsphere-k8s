@@ -29,12 +29,32 @@ Chart.lock
 *.ign.base64
 
 # Secrets and credentials
-secrets/
+# Ignore secrets directories but keep template files
+secrets/**/*
+!secrets/**/*.template
+!secrets/**/README.md
+!secrets/**/.gitignore
+
 credentials/
 *.key
 *.pem
 *.crt
 *.p12
+
+# Kubernetes secrets with actual credentials
+*-secrets.yaml
+*-credentials.yaml
+*secret.yaml
+*secrets.yaml
+# But keep template files
+!*-secrets.yaml.template
+!*-credentials.yaml.template
+!*secret.yaml.example
+!*secrets.yaml.example
+
+# Media stack specific secrets
+kubernetes/apps/media-stack/shared-storage.yaml
+kubernetes/apps/media-stack/qbittorrent/deployment.yaml
 
 # IDE and editor files
 .vscode/

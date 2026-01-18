@@ -49,15 +49,49 @@ exportfs -ra
 
 ## Installazione
 
-### 1. Crea il Secret Mullvad VPN
+### 0. Gestione Secrets (IMPORTANTE)
+
+⚠️ **I file con credenziali reali NON devono essere committati su Git!**
+
+Questo repository usa file template per i secret. Devi creare le tue copie locali:
 
 ```bash
+cd kubernetes/apps/media-stack
+
+# Copia i template
+cp secrets/mullvad-vpn-secret.yaml.template secrets/mullvad-vpn-secret.yaml
+cp secrets/smb-credentials-secret.yaml.template secrets/smb-credentials-secret.yaml
+cp shared-storage.yaml.template shared-storage.yaml
+
+# Modifica i file copiati con le tue credenziali
+# I file *-secret.yaml e shared-storage.yaml sono in .gitignore
+```
+
+Oppure crea i secret direttamente con kubectl (raccomandato):
+
+```bash
+# Mullvad VPN secret
 kubectl create secret generic mullvad-vpn \
   --from-literal=account-number=YOUR_MULLVAD_ACCOUNT_NUMBER \
   -n media
+
+# SMB credentials secret
+kubectl create secret generic smb-credentials \
+  --from-literal=username=media-user \
+  --from-literal=password=YourSecurePassword123! \
+  -n media
 ```
 
-**Sostituisci `YOUR_MULLVAD_ACCOUNT_NUMBER`** con il tuo account number Mullvad.
+Vedi [secrets/README.md](secrets/README.md) per maggiori dettagli.
+
+### 1. Installa CSI Driver SMB
+
+```bash
+helm repo add csi-driver-smb https://raw.githubusercontent.com/kubernetes-csi/csi-driver-smb/master/charts
+helm install csi-driver-smb csi-driver-smb/csi-driver-smb \
+  --namespace kube-system \
+  --version v1.15.0
+```
 
 ### 2. Deploy dei Manifesti
 

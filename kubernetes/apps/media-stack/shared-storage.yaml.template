@@ -1,11 +1,16 @@
 ---
 # Secret for SMB credentials
-# See: kubernetes/apps/media-stack/secrets/smb-credentials-secret.yaml.template
-# Or create directly:
-# kubectl create secret generic smb-credentials \
-#   --from-literal=username=media-user \
-#   --from-literal=password=yourpassword \
-#   -n media
+# Copy this file to shared-storage.yaml and fill in your credentials
+# cp shared-storage.yaml.template shared-storage.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: smb-credentials
+  namespace: media
+type: Opaque
+stringData:
+  username: "REPLACE_WITH_YOUR_USERNAME"  # e.g., "media-user" or "DOMAIN\\username"
+  password: "REPLACE_WITH_YOUR_PASSWORD"  # Strong password for SMB share
 
 ---
 # SMB PersistentVolume for movies
