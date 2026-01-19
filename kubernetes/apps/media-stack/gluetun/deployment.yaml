@@ -122,7 +122,7 @@ spec:
             claimName: qbittorrent-config-pvc
         - name: downloads
           persistentVolumeClaim:
-            claimName: media-downloads-pvc
+            claimName: smb-downloads-pvc
 ---
 apiVersion: v1
 kind: Service

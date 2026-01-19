@@ -129,3 +129,51 @@ spec:
   selector:
     matchLabels:
       content: video
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smb-downloads-pvc
+  namespace: media-stack
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: smb
+  resources:
+    requests:
+      storage: 2Ti
+  selector:
+    matchLabels:
+      content: downloads
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smb-audiobooks-pvc
+  namespace: media-stack
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: smb
+  resources:
+    requests:
+      storage: 1Ti
+  selector:
+    matchLabels:
+      content: audiobooks
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smb-podcasts-pvc
+  namespace: media-stack
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: smb
+  resources:
+    requests:
+      storage: 500Gi
+  selector:
+    matchLabels:
+      content: podcasts

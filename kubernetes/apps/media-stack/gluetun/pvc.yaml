@@ -1,4 +1,5 @@
-# PersistentVolumeClaims for qBittorrent (via gluetun)
+# PersistentVolumeClaims for qBittorrent config (via gluetun)
+# Downloads uses SMB share from smb-storage/
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -11,16 +12,3 @@ spec:
   resources:
     requests:
       storage: 1Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: media-downloads-pvc
-  namespace: media-stack
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: vsphere-csi
-  resources:
-    requests:
-      storage: 500Gi

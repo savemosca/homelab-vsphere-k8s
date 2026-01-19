@@ -260,3 +260,99 @@ spec:
     nodeStageSecretRef:
       name: smb-credentials
       namespace: media-stack
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-downloads
+  labels:
+    type: smb
+    content: downloads
+spec:
+  capacity:
+    storage: 2Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: smb
+  mountOptions:
+    - dir_mode=0755
+    - file_mode=0644
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+    - noserverino
+  csi:
+    driver: smb.csi.k8s.io
+    volumeHandle: smb-downloads
+    volumeAttributes:
+      source: "//srv05.mosca.lan/Downloads"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media-stack
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-audiobooks
+  labels:
+    type: smb
+    content: audiobooks
+spec:
+  capacity:
+    storage: 1Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: smb
+  mountOptions:
+    - dir_mode=0755
+    - file_mode=0644
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+    - noserverino
+  csi:
+    driver: smb.csi.k8s.io
+    volumeHandle: smb-audiobooks
+    volumeAttributes:
+      source: "//srv05.mosca.lan/Audiobooks"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media-stack
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-podcasts
+  labels:
+    type: smb
+    content: podcasts
+spec:
+  capacity:
+    storage: 500Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: smb
+  mountOptions:
+    - dir_mode=0755
+    - file_mode=0644
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+    - noserverino
+  csi:
+    driver: smb.csi.k8s.io
+    volumeHandle: smb-podcasts
+    volumeAttributes:
+      source: "//srv05.mosca.lan/Podcasts"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media-stack
