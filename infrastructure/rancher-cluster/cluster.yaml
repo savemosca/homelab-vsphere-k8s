@@ -9,8 +9,8 @@ metadata:
   annotations:
     field.cattle.io/description: "Homelab Kubernetes workload cluster on vSphere"
 spec:
-  # Cloud credential reference
-  cloudCredentialSecretName: cattle-global-data:vsphere-homelab
+  # Cloud credential reference (created via Rancher API)
+  cloudCredentialSecretName: cattle-global-data:cc-c5lds
 
   # Kubernetes distribution
   kubernetesVersion: v1.31.4+rke2r1
