@@ -1,4 +1,4 @@
-# ExternalDNS per Windows DNS (RFC2136)
+# ExternalDNS per Windows DNS (RFC2136 con GSS-TSIG/Kerberos)
 # Crea CNAME verso ingress.savemosca.com per ogni Ingress
 
 apiVersion: apps/v1
@@ -33,25 +33,33 @@ spec:
             - --txt-owner-id=homelab-k8s
             - --txt-prefix=externaldns-
             - --domain-filter=savemosca.com
-            # Windows DNS Server
-            - --rfc2136-host=WINDOWS_DNS_SERVER_IP
+            # Windows DNS Server (primary)
+            - --rfc2136-host=192.168.11.66
             - --rfc2136-port=53
             - --rfc2136-zone=savemosca.com
-            # TSIG authentication
-            - --rfc2136-tsig-secret-alg=hmac-sha256
-            - --rfc2136-tsig-keyname=externaldns-key
-            - --rfc2136-tsig-axfr  # Abilita zone transfer per leggere record esistenti
+            # GSS-TSIG (Kerberos) authentication
+            - --rfc2136-gss-tsig
+            - --rfc2136-kerberos-realm=MOSCA.LAN
+            - --rfc2136-kerberos-username=externaldns.user
             # Log level
             - --log-level=info
             - --log-format=text
             # Interval
             - --interval=1m
           env:
-            - name: EXTERNAL_DNS_RFC2136_TSIG_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: windows-dns-credentials
-                  key: tsig-secret
+            - name: KRB5_CONFIG
+              value: /etc/krb5/krb5.conf
+            - name: KRB5_CLIENT_KTNAME
+              value: /etc/krb5/krb5.keytab
+          volumeMounts:
+            - name: krb5-config
+              mountPath: /etc/krb5/krb5.conf
+              subPath: krb5.conf
+              readOnly: true
+            - name: krb5-keytab
+              mountPath: /etc/krb5/krb5.keytab
+              subPath: krb5.keytab
+              readOnly: true
           resources:
             requests:
               memory: "64Mi"
@@ -59,6 +67,16 @@ spec:
             limits:
               memory: "128Mi"
               cpu: "100m"
+      volumes:
+        - name: krb5-config
+          configMap:
+            name: krb5-config
+        - name: krb5-keytab
+          secret:
+            secretName: windows-dns-credentials
+            items:
+              - key: krb5.keytab
+                path: krb5.keytab
 ---
 apiVersion: v1
 kind: ServiceAccount
