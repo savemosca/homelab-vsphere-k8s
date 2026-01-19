@@ -1,311 +1,246 @@
 # Homelab vSphere 8 + Kubernetes Infrastructure
 
-Production-grade Kubernetes homelab running on vSphere 8 with ephemeral nodes, autoscaling, and GitOps CI/CD.
+Production-grade Kubernetes homelab running on vSphere 8 with Rancher, ephemeral workers, and GitOps.
 
 ## Architecture Overview
 
-- **Infrastructure**: VMware vSphere 8 (single host: 10 cores/128GB RAM)
-- **Management**: Rancher v2.11.8 on K3s (srv26.mosca.lan) for centralized cluster management
-- **Kubernetes**: Vanilla K8s managed by Cluster API Provider vSphere (CAPV)
-- **Node OS**: Flatcar Container Linux (ephemeral, immutable)
-- **Networking**: Cilium CNI with eBPF dataplane
+- **Infrastructure**: VMware vSphere 8 (2 ESXi hosts in cluster)
+- **Management**: Rancher v2.13.1 on K3s (srv26.mosca.lan)
+- **Kubernetes**: RKE2 v1.31.4 provisioned by Rancher
+- **Node OS**:
+  - Flatcar Container Linux (standard workers - ephemeral)
+  - Ubuntu 24.04 LTS (GPU workers - semi-persistent)
+- **Networking**:
+  - Cilium CNI with Hubble observability
+  - MetalLB for LoadBalancer services
+  - 3 dedicated VLANs (management, workload, services)
 - **Storage**: vSphere CSI Driver with dynamic provisioning
-- **CI/CD**: GitHub Actions with automated deployments
-- **Autoscaling**: Cluster Autoscaler (2-5 worker nodes)
+- **Secrets**: Sealed Secrets for GitOps-safe secret management
+- **GPU**: NVIDIA T4 with driver 550 + Container Toolkit
+
+## Network Architecture
+
+| VLAN | Name | Subnet | Purpose |
+|------|------|--------|---------|
+| 35 | net-k8s-management | 192.168.11.128/26 | Control plane, Rancher |
+| 36 | net-k8s-workload | 192.168.13.0/24 | Worker nodes (DHCP) |
+| 37 | net-k8s-services | 192.168.14.0/25 | MetalLB LoadBalancer IPs |
+
+Workers have dual-NIC configuration (ens160 on VLAN 36, ens192 on VLAN 37).
 
 ## Repository Structure
 
 ```text
 homelab-vsphere-k8s/
 ├── docs/                              # Documentation
-│   ├── 00-rancher-upgrade.md          # Rancher upgrade guide (v2.11.0 → v2.11.8)
-│   ├── 01-vsphere-setup.md            # vSphere prerequisites and configuration
-│   ├── 02-management-cluster-rancher.md # CAPV setup on existing Rancher K3s
-│   ├── 03-workload-cluster.md         # Production K8s cluster deployment
-│   ├── 04-autoscaling.md              # Cluster Autoscaler configuration
-│   ├── 05-cicd-setup.md               # GitHub Actions integration
-│   └── 06-rancher-import.md           # Import workload cluster into Rancher
+│   ├── 00-rancher-upgrade.md          # Rancher upgrade guide
+│   ├── 01-vsphere-setup.md            # vSphere prerequisites
+│   ├── 02-management-cluster-rancher.md
+│   ├── 03-workload-cluster.md
+│   └── ...
 │
 ├── infrastructure/
-│   ├── management-cluster/         # K3s + CAPV controller
-│   │   ├── k3s-install.sh
-│   │   ├── capv-init.yaml
-│   │   └── clusterctl-config.yaml
+│   ├── rancher-cluster/               # RKE2 cluster definition
+│   │   ├── cluster.yaml               # Cluster CRD for Rancher
+│   │   ├── vsphere-machine-config.yaml # VM configs per node type
+│   │   └── cloud-credential.yaml.template
 │   │
-│   ├── workload-cluster/           # Main K8s cluster manifests
-│   │   ├── cluster.yaml            # Cluster API cluster definition
-│   │   ├── control-plane.yaml      # Control plane config
-│   │   ├── worker-pool.yaml        # Worker MachineDeployment
-│   │   └── autoscaler.yaml         # Cluster Autoscaler
+│   ├── sealed-secrets/                # Sealed Secrets controller
+│   │   └── kustomization.yaml
 │   │
-│   ├── flatcar-ignition/           # Flatcar node configuration
-│   │   ├── worker-node.bu          # Butane YAML config
-│   │   └── convert.sh              # Butane → Ignition converter
+│   ├── metallb/                       # MetalLB L2 configuration
+│   │   └── metallb-config.yaml
 │   │
-│   ├── storage/                    # Persistent storage
-│   │   ├── vsphere-csi-driver.yaml
-│   │   ├── storageclass.yaml
-│   │   └── velero-backup.yaml
+│   ├── vsphere-csi/                   # vSphere CSI driver
+│   │   └── ...
 │   │
-│   └── networking/                 # Network infrastructure
-│       ├── cilium-values.yaml
-│       ├── metallb-config.yaml
-│       └── nginx-ingress.yaml
+│   ├── gpu-worker/                    # GPU node configuration
+│   │   ├── cloud-init-gpu.yaml        # Ubuntu cloud-init with NVIDIA
+│   │   └── nvidia-device-plugin.yaml
+│   │
+│   └── flatcar-ignition/              # Flatcar node config
+│       └── worker-node.bu
 │
 ├── kubernetes/
-│   ├── core/                       # Core cluster services
+│   ├── core/                          # Core cluster services
 │   │   ├── cert-manager/
-│   │   ├── external-dns/
+│   │   ├── nginx-ingress/
 │   │   └── sealed-secrets/
 │   │
-│   ├── apps/                       # Homelab applications
-│   │   ├── media-stack/            # Radarr, Sonarr, Bazarr, Qbittorrent
-│   │   │   ├── namespace.yaml
-│   │   │   ├── radarr/
-│   │   │   ├── sonarr/
-│   │   │   ├── bazarr/
-│   │   │   └── qbittorrent/
-│   │   │
-│   │   └── pihole-cloudflared/     # DNS + Cloudflare tunnel
-│   │       ├── pihole-deployment.yaml
-│   │       └── cloudflared-deployment.yaml
-│   │
-│   └── monitoring/                 # Observability stack
-│       ├── kube-prometheus-stack/
-│       └── grafana-dashboards/
+│   └── apps/                          # Homelab applications
+│       └── media-stack/               # Radarr, Sonarr, etc.
 │
-├── ci-cd/
-│   ├── github-actions/             # CI/CD workflows
-│   │   ├── build-push.yaml         # Container build & push
-│   │   └── deploy.yaml             # Kubernetes deployment
-│   │
-│   └── helm-charts/                # Custom Helm charts
-│       └── homelab-apps/
+├── scripts/
+│   ├── import-vm-templates.ps1        # PowerCLI template import
+│   ├── import-vm-templates.sh         # govc template import
+│   └── deploy-cluster.sh
 │
-└── scripts/                        # Automation scripts
-    ├── bootstrap.sh                # Full cluster bootstrap
-    ├── backup.sh                   # Velero backup automation
-    └── destroy.sh                  # Cleanup script
+└── ci-cd/
+    └── github-actions/
 ```
 
 ## Quick Start
 
 ### Prerequisites
 
-- vSphere 8 with vCenter credentials
-- Existing Rancher installation (srv26.mosca.lan) or fresh K3s install
-- vSphere namespace/resource pool configured
-- DHCP or static IP pool for VMs
-- ~500GB free datastore space
-- GitHub account for CI/CD
+- vSphere 8 with vCenter
+- Rancher v2.13+ installed
+- Content Libraries with VM templates:
+  - `flatcar-stable-4459.2.2` (Flatcar Stable)
+  - `ubuntu-24.04-lts-cloudimg` (Ubuntu Server LTS)
+- Network configured (VLANs 35, 36, 37)
 
-### 1. Upgrade Rancher (if existing installation)
-
-```bash
-# Backup and upgrade Rancher from v2.11.0 to v2.11.8
-# See detailed guide: docs/00-rancher-upgrade.md
-
-ssh administrator@srv26.mosca.lan
-# Follow backup and upgrade procedures
-```
-
-### 2. Prepare vSphere Environment
+### 1. Import VM Templates
 
 ```bash
-# Follow detailed guide
-cat docs/01-vsphere-setup.md
+# Using PowerCLI (macOS/Windows)
+./scripts/import-vm-templates.ps1
 
-# Upload Flatcar OVA to Content Library
-# Configure network and resource pool
-# Get vCenter SSL thumbprint
+# Or using govc (Linux/macOS)
+./scripts/import-vm-templates.sh
 ```
 
-### 3. Setup CAPV on Management Cluster (srv26)
+### 2. Create Cloud Credential in Rancher
 
 ```bash
-# Configure parameters
-cp infrastructure/vsphere-params.env.template ~/.cluster-api/vsphere-params.env
-nano ~/.cluster-api/vsphere-params.env  # Edit with your vSphere details
-
-# Install clusterctl and initialize CAPV
-# Follow: docs/02-management-cluster-rancher.md
-clusterctl init --infrastructure vsphere
+# Via Rancher API
+curl -sk -X POST "https://rancher.savemosca.com/v3/cloudcredentials" \
+  -H "Authorization: Bearer $RANCHER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "vsphere-homelab",
+    "vmwarevspherecredentialConfig": {
+      "vcenter": "srv02.mosca.lan",
+      "vcenterPort": "443",
+      "username": "rancher.user@vsphere.local",
+      "password": "YOUR_PASSWORD"
+    }
+  }'
 ```
 
-### 4. Create Workload Cluster
+### 3. Deploy RKE2 Cluster
 
 ```bash
-# Load vSphere parameters
-source ~/.cluster-api/vsphere-params.env
+# Get Rancher kubeconfig
+export KUBECONFIG=~/.kube/rancher-local.yaml
 
-# Generate cluster manifest
-./scripts/generate-cluster-manifest.sh
+# Apply cluster and machine configs
+kubectl apply -f infrastructure/rancher-cluster/vsphere-machine-config.yaml
+kubectl apply -f infrastructure/rancher-cluster/cluster.yaml
 
-# Deploy cluster
-export KUBECONFIG=~/.kube/srv26-config
-kubectl apply -f generated/cluster-full.yaml
-
-# Wait for cluster ready
-watch kubectl get clusters,machines,vspheremachines
+# Watch provisioning
+watch kubectl get clusters,machines -n fleet-default
 ```
 
-### 5. Import Cluster into Rancher
-
-```bash
-# Get workload cluster kubeconfig
-clusterctl get kubeconfig homelab-k8s > ~/.kube/homelab-k8s-config
-
-# Import via Rancher UI
-# Follow: docs/06-rancher-import.md
-# Rancher URL: https://rancher.savemosca.com
-```
-
-### 6. Install Core Components
+### 4. Install Infrastructure Components
 
 ```bash
 # Switch to workload cluster
-export KUBECONFIG=~/.kube/homelab-k8s-config
+export KUBECONFIG=~/.kube/homelab-k8s.yaml
 
-# Install Cilium CNI
-helm repo add cilium https://helm.cilium.io/
-helm install cilium cilium/cilium --version 1.14.5 \
-  -f infrastructure/networking/cilium-values.yaml
-
-# Install vSphere CSI Driver
-kubectl apply -f infrastructure/storage/vsphere-csi-driver.yaml
+# Install Sealed Secrets
+kubectl apply -k infrastructure/sealed-secrets/
 
 # Install MetalLB
-kubectl apply -f infrastructure/networking/metallb-config.yaml
+kubectl apply -f infrastructure/metallb/metallb-config.yaml
 
 # Install NGINX Ingress
-kubectl apply -f infrastructure/networking/nginx-ingress.yaml
+kubectl apply -f kubernetes/core/nginx-ingress/
 ```
 
-### 7. Deploy Applications
+### 5. Seal Your Secrets
 
 ```bash
-# Media stack
-kubectl apply -k kubernetes/apps/media-stack/
+# Install kubeseal CLI
+brew install kubeseal
 
-# Pihole + Cloudflared
-kubectl apply -k kubernetes/apps/pihole-cloudflared/
+# Create a secret
+kubectl create secret generic my-secret \
+  --from-literal=password=supersecret \
+  --dry-run=client -o yaml > secret.yaml
+
+# Seal it (can be committed to git)
+kubeseal --controller-namespace kube-system \
+  --controller-name sealed-secrets-controller \
+  < secret.yaml > sealed-secret.yaml
+
+# Apply sealed secret
+kubectl apply -f sealed-secret.yaml
 ```
 
-### 8. Setup CI/CD
+## Node Pools
 
-Follow [docs/05-cicd-setup.md](docs/05-cicd-setup.md) to configure GitHub Actions.
+| Pool | OS | Quantity | Purpose | Ephemeral |
+|------|-----|----------|---------|-----------|
+| control-plane | Ubuntu 24.04 | 1 | K8s control plane + etcd | No |
+| workers | Flatcar 4459.2.2 | 2 | Standard workloads | Yes (5m timeout) |
+| gpu-workers | Ubuntu 24.04 | 0* | GPU workloads (NVIDIA T4) | No |
+
+*GPU workers added after vSphere GPU passthrough configured.
 
 ## Resource Allocation
 
-| Component | vCPU | RAM | Storage | Purpose |
-|-----------|------|-----|---------|---------|
-| srv26 (Management + Rancher) | 2+ | 4-6GB | 50GB | K3s + Rancher + CAPV controllers |
-| Control Plane | 2 | 8GB | 50GB | K8s control plane (etcd, API server) |
-| Worker 1 | 4 | 16GB | 100GB | Primary workloads |
-| Worker 2 | 4 | 16GB | 100GB | Workload HA |
-| **Total** | **12-14** | **44-54GB** | **300-350GB** | **~35-40% host capacity** |
+| Component | vCPU | RAM | Storage |
+|-----------|------|-----|---------|
+| Control Plane | 2 | 4GB | 40GB |
+| Worker (x2) | 4 | 8GB | 40GB |
+| GPU Worker | 8 | 32GB | 100GB |
 
-## Autoscaling Configuration
+## Content Libraries
 
-- **Min workers**: 2 nodes
-- **Max workers**: 4-5 nodes (limited by host resources)
-- **Scale-up trigger**: Pending pods for >30s
-- **Scale-down delay**: 10 minutes idle
-- **VM startup time**: ~2-3 minutes (Flatcar + K8s join)
+| Library | Datastore | Location |
+|---------|-----------|----------|
+| cnt-lbr-k8s-esxi01 | datastore06-local-jbod | esxi01 |
+| cnt-lbr-k8s-esxi02 | datastore01-esxi02-local | esxi02 |
 
-## Architecture Diagram
+Both contain: `flatcar-stable-4459.2.2`, `ubuntu-24.04-lts-cloudimg`
 
-```text
-┌──────────────────────────────────────────────────────────┐
-│           srv26.mosca.lan (Management Cluster)           │
-│                                                          │
-│  ┌───────────────┐         ┌──────────────────────┐    │
-│  │ Rancher v2.11 │         │  CAPV Controllers    │    │
-│  │ • Web UI      │         │  • cluster-api       │    │
-│  │ • Multi-mgmt  │◄────────┤  • capv-controller   │────┼────┐
-│  │ • Monitoring  │         │  • kubeadm-bootstrap │    │    │
-│  └───────────────┘         └──────────────────────┘    │    │
-│                    K3s v1.32.3                          │    │
-└──────────────────────────────────────────────────────────┘    │
-                                                                │
-        Manages Infrastructure          Imports for Management  │
-                │                                               │
-                ▼                                               │
-┌────────────────────────────────────────────────────┐         │
-│       Workload Cluster (vSphere VMs)               │         │
-│  ┌──────────────┐  ┌────────────────────────────┐ │         │
-│  │ Control Plane│  │  Worker Nodes (2-5)        │ │◄────────┘
-│  │ • etcd       │  │  • Flatcar Linux           │ │
-│  │ • API Server │  │  • Auto-scaling (CAPV)     │ │
-│  │ • Scheduler  │  │  • Apps running here       │ │
-│  └──────────────┘  └────────────────────────────┘ │
-│              Kubernetes v1.32.3                    │
-└────────────────────────────────────────────────────┘
+## Sealed Secrets
+
+This project uses [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) for GitOps-safe secret management:
+
+- Secrets are encrypted with a cluster-specific key
+- Encrypted secrets (SealedSecrets) can be safely committed to Git
+- Only the cluster can decrypt them
+
+```bash
+# Backup the sealing key (IMPORTANT - store securely!)
+kubectl get secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-key -o yaml > sealed-secrets-key-backup.yaml
 ```
-
-## CI/CD Pipeline
-
-```text
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│  Git Push   │────▶│GitHub Actions│────▶│   Deploy    │
-│             │     │              │     │             │
-│ • Code      │     │ • Build img  │     │ • kubectl   │
-│ • Manifests │     │ • Push GHCR  │     │ • Helm      │
-└─────────────┘     └──────────────┘     └─────────────┘
-```
-
-See [ci-cd/github-actions/](ci-cd/github-actions/) for workflow definitions.
 
 ## Monitoring
 
-Access monitoring dashboards:
-- **Rancher UI**: https://rancher.savemosca.com (cluster overview, resources)
-- **Grafana**: Deployed via Rancher Monitoring (cluster metrics, node stats, application performance)
-- **Prometheus**: Metrics collection and alerting
-- **Alerts**: Configured via Rancher for critical events
-
-## Backup Strategy
-
-- **Velero**: Automated PV backups to NFS/S3
-- **Etcd snapshots**: Daily control plane backups
-- **GitOps**: All configs version-controlled in this repo
-
-## Cost Breakdown
-
-- **vSphere licensing**: Already owned
-- **Hardware**: Existing homelab server
-- **GitHub Actions**: Free (2000 min/month for private repos)
-- **Total monthly cost**: $0
+- **Rancher UI**: https://rancher.savemosca.com
+- **Hubble UI**: Cilium network observability (via port-forward)
+- **Grafana**: Via Rancher Monitoring stack
 
 ## Maintenance
 
-- **OS updates**: Flatcar auto-updates (stable channel)
-- **K8s upgrades**: Managed via CAPV cluster updates
-- **Application updates**: Automated via Renovate bot
-- **Time commitment**: ~30 min/month
+- **Flatcar updates**: Automatic (Stable channel)
+- **Ubuntu updates**: Via cloud-init on boot
+- **K8s upgrades**: Managed via Rancher UI or cluster.yaml
+- **Secret rotation**: Re-seal and apply new SealedSecrets
 
 ## Troubleshooting
 
-Common issues and solutions in [docs/troubleshooting.md](docs/troubleshooting.md).
+```bash
+# Check cluster status
+kubectl get clusters -n fleet-default
 
-## Contributing
+# Check machine provisioning
+kubectl get machines -n fleet-default
 
-This is a personal homelab project, but feel free to:
-- Open issues for questions
-- Submit PRs for improvements
-- Fork for your own homelab
+# Check Rancher logs
+kubectl logs -n cattle-system -l app=rancher
+
+# Check Sealed Secrets controller
+kubectl logs -n kube-system -l app.kubernetes.io/name=sealed-secrets
+```
 
 ## License
 
-MIT License - see [LICENSE](LICENSE)
-
-## Acknowledgments
-
-- [Cluster API Provider vSphere](https://github.com/kubernetes-sigs/cluster-api-provider-vsphere)
-- [Flatcar Container Linux](https://www.flatcar.org/)
-- [Cilium CNI](https://cilium.io/)
-- Homelab community at r/homelab
+MIT License
 
 ---
 
-**Status**: 🚧 In Progress | **Last Updated**: 2026-01-17
+**Status**: In Progress | **Last Updated**: 2026-01-19

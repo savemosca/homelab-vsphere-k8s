@@ -1,0 +1,13 @@
+# Sealed Secrets Controller
+# Permette di committare secrets criptati nel repository
+#
+# Installazione: kubectl apply -k infrastructure/sealed-secrets/
+# Docs: https://github.com/bitnami-labs/sealed-secrets
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: kube-system
+
+resources:
+  - https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.27.3/controller.yaml
