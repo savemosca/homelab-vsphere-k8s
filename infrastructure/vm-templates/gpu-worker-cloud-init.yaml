@@ -1,5 +1,6 @@
 #cloud-config
-# Cloud-init per Worker Node con NVIDIA GPU (Ubuntu Server 24.04 LTS)
+# Cloud-init per Worker Node con NVIDIA vGPU (Ubuntu Server 24.04 LTS)
+# GPU: Tesla P4 con profilo grid_p4-4q
 # Da usare come user-data nel template vSphere
 
 package_update: true
@@ -11,18 +12,21 @@ packages:
   - ca-certificates
 
 runcmd:
-  # Installa NVIDIA Driver
+  # Installa NVIDIA vGPU Driver (GRID)
   - |
     if lspci | grep -i nvidia; then
-      echo "NVIDIA GPU detected, installing drivers..."
+      echo "NVIDIA vGPU detected, installing GRID drivers..."
 
-      # Ubuntu 24.04 LTS - usa driver 550 (supportato nativamente)
-      if [ -f /etc/debian_version ]; then
-        apt-get update
-        DEBIAN_FRONTEND=noninteractive apt-get install -y \
-          nvidia-driver-550-server \
-          nvidia-utils-550-server
-      fi
+      # Per vGPU serve il driver GRID, non quello standard
+      # Il driver GRID va scaricato dal NVIDIA Licensing Portal
+      # e inserito nel template o in uno share accessibile
+
+      # Opzione 1: Driver pre-installato nel template
+      # Opzione 2: Download da share interno
+      # if [ -f /mnt/drivers/NVIDIA-Linux-x86_64-550.xxx-grid.run ]; then
+      #   chmod +x /mnt/drivers/NVIDIA-Linux-x86_64-550.xxx-grid.run
+      #   /mnt/drivers/NVIDIA-Linux-x86_64-550.xxx-grid.run --silent
+      # fi
 
       # Installa NVIDIA Container Toolkit
       curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
@@ -38,9 +42,26 @@ runcmd:
       nvidia-ctk runtime configure --runtime=containerd
       systemctl restart containerd
 
-      echo "NVIDIA setup completed"
+      echo "NVIDIA Container Toolkit setup completed"
     else
       echo "No NVIDIA GPU detected, skipping driver installation"
+    fi
+
+  # Configura NVIDIA GRID License Client
+  - |
+    mkdir -p /etc/nvidia
+    cat > /etc/nvidia/gridd.conf << 'EOF'
+    # NVIDIA GRID License Configuration
+    # License server: FastAPI-DLS su Kubernetes
+    ServerAddress=nvidia-dls.mosca.lan
+    ServerPort=443
+    FeatureType=1
+    EnableUI=FALSE
+    EOF
+
+    # Riavvia il servizio di licensing se il driver è installato
+    if systemctl is-active nvidia-gridd &>/dev/null; then
+      systemctl restart nvidia-gridd
     fi
 
 # Aggiungi label automaticamente al nodo (richiede kubectl configurato)
