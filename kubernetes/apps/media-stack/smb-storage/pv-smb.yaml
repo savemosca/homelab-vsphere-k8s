@@ -1,0 +1,262 @@
+# SMB PersistentVolumes per media storage
+# Server: srv05.mosca.lan
+#
+# Richiede SMB CSI Driver installato nel cluster:
+# helm install csi-driver-smb csi-driver-smb/csi-driver-smb -n kube-system
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-movies
+  labels:
+    type: smb
+    content: movies
+spec:
+  capacity:
+    storage: 10Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: smb
+  mountOptions:
+    - dir_mode=0755
+    - file_mode=0644
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+    - noserverino
+  csi:
+    driver: smb.csi.k8s.io
+    volumeHandle: smb-movies
+    volumeAttributes:
+      source: "//srv05.mosca.lan/Movies"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media-stack
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-tvseries
+  labels:
+    type: smb
+    content: tvseries
+spec:
+  capacity:
+    storage: 10Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: smb
+  mountOptions:
+    - dir_mode=0755
+    - file_mode=0644
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+    - noserverino
+  csi:
+    driver: smb.csi.k8s.io
+    volumeHandle: smb-tvseries
+    volumeAttributes:
+      source: "//srv05.mosca.lan/TVSeries"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media-stack
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-music
+  labels:
+    type: smb
+    content: music
+spec:
+  capacity:
+    storage: 5Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: smb
+  mountOptions:
+    - dir_mode=0755
+    - file_mode=0644
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+    - noserverino
+  csi:
+    driver: smb.csi.k8s.io
+    volumeHandle: smb-music
+    volumeAttributes:
+      source: "//srv05.mosca.lan/Music"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media-stack
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-books
+  labels:
+    type: smb
+    content: books
+spec:
+  capacity:
+    storage: 1Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: smb
+  mountOptions:
+    - dir_mode=0755
+    - file_mode=0644
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+    - noserverino
+  csi:
+    driver: smb.csi.k8s.io
+    volumeHandle: smb-books
+    volumeAttributes:
+      source: "//srv05.mosca.lan/Books"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media-stack
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-comics
+  labels:
+    type: smb
+    content: comics
+spec:
+  capacity:
+    storage: 1Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: smb
+  mountOptions:
+    - dir_mode=0755
+    - file_mode=0644
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+    - noserverino
+  csi:
+    driver: smb.csi.k8s.io
+    volumeHandle: smb-comics
+    volumeAttributes:
+      source: "//srv05.mosca.lan/Comics"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media-stack
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-games
+  labels:
+    type: smb
+    content: games
+spec:
+  capacity:
+    storage: 2Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: smb
+  mountOptions:
+    - dir_mode=0755
+    - file_mode=0644
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+    - noserverino
+  csi:
+    driver: smb.csi.k8s.io
+    volumeHandle: smb-games
+    volumeAttributes:
+      source: "//srv05.mosca.lan/Games"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media-stack
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-pictures
+  labels:
+    type: smb
+    content: pictures
+spec:
+  capacity:
+    storage: 2Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: smb
+  mountOptions:
+    - dir_mode=0755
+    - file_mode=0644
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+    - noserverino
+  csi:
+    driver: smb.csi.k8s.io
+    volumeHandle: smb-pictures
+    volumeAttributes:
+      source: "//srv05.mosca.lan/Pictures"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media-stack
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: smb-video
+  labels:
+    type: smb
+    content: video
+spec:
+  capacity:
+    storage: 5Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: smb
+  mountOptions:
+    - dir_mode=0755
+    - file_mode=0644
+    - uid=1000
+    - gid=1000
+    - noperm
+    - mfsymlinks
+    - cache=strict
+    - noserverino
+  csi:
+    driver: smb.csi.k8s.io
+    volumeHandle: smb-video
+    volumeAttributes:
+      source: "//srv05.mosca.lan/Video"
+    nodeStageSecretRef:
+      name: smb-credentials
+      namespace: media-stack

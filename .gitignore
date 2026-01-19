@@ -41,6 +41,11 @@ credentials/
 *.crt
 *.p12
 
+# WireGuard/VPN configurations (contain private keys)
+wireguard-conf/
+*.conf
+!*.conf.example
+
 # Kubernetes secrets with actual credentials
 *-secrets.yaml
 *-credentials.yaml

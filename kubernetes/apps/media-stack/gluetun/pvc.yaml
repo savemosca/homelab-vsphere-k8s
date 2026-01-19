@@ -1,0 +1,26 @@
+# PersistentVolumeClaims for qBittorrent (via gluetun)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qbittorrent-config-pvc
+  namespace: media-stack
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: vsphere-csi
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-downloads-pvc
+  namespace: media-stack
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: vsphere-csi
+  resources:
+    requests:
+      storage: 500Gi

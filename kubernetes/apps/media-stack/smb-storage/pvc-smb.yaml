@@ -1,0 +1,131 @@
+# SMB PersistentVolumeClaims per media stack
+# Si legano ai PV definiti in pv-smb.yaml
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smb-movies-pvc
+  namespace: media-stack
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: smb
+  resources:
+    requests:
+      storage: 10Ti
+  selector:
+    matchLabels:
+      content: movies
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smb-tvseries-pvc
+  namespace: media-stack
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: smb
+  resources:
+    requests:
+      storage: 10Ti
+  selector:
+    matchLabels:
+      content: tvseries
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smb-music-pvc
+  namespace: media-stack
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: smb
+  resources:
+    requests:
+      storage: 5Ti
+  selector:
+    matchLabels:
+      content: music
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smb-books-pvc
+  namespace: media-stack
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: smb
+  resources:
+    requests:
+      storage: 1Ti
+  selector:
+    matchLabels:
+      content: books
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smb-comics-pvc
+  namespace: media-stack
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: smb
+  resources:
+    requests:
+      storage: 1Ti
+  selector:
+    matchLabels:
+      content: comics
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smb-games-pvc
+  namespace: media-stack
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: smb
+  resources:
+    requests:
+      storage: 2Ti
+  selector:
+    matchLabels:
+      content: games
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smb-pictures-pvc
+  namespace: media-stack
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: smb
+  resources:
+    requests:
+      storage: 2Ti
+  selector:
+    matchLabels:
+      content: pictures
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smb-video-pvc
+  namespace: media-stack
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: smb
+  resources:
+    requests:
+      storage: 5Ti
+  selector:
+    matchLabels:
+      content: video
