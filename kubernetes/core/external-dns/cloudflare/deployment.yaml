@@ -1,0 +1,62 @@
+# ExternalDNS per Cloudflare
+# Crea CNAME verso home.savemosca.com per ogni Ingress
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: external-dns-cloudflare
+  namespace: external-dns
+  labels:
+    app: external-dns-cloudflare
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: external-dns-cloudflare
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: external-dns-cloudflare
+    spec:
+      serviceAccountName: external-dns-cloudflare
+      containers:
+        - name: external-dns
+          image: registry.k8s.io/external-dns/external-dns:v0.14.0
+          args:
+            - --source=ingress
+            - --source=service
+            - --provider=cloudflare
+            - --cloudflare-proxied  # Abilita proxy Cloudflare (opzionale)
+            - --policy=sync
+            - --registry=txt
+            - --txt-owner-id=homelab-k8s
+            - --txt-prefix=externaldns-
+            - --domain-filter=savemosca.com
+            # Crea CNAME verso home.savemosca.com invece di A record
+            - --cloudflare-dns-records-per-page=100
+            # Log level
+            - --log-level=info
+            - --log-format=text
+            # Interval
+            - --interval=1m
+          env:
+            - name: CF_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflare-credentials
+                  key: api-token
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "25m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: external-dns-cloudflare
+  namespace: external-dns

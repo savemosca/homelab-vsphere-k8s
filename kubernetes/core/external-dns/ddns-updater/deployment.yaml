@@ -1,0 +1,80 @@
+# DDNS Updater
+# Aggiorna home.savemosca.com su Cloudflare con l'IP pubblico dinamico
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ddns-updater
+  namespace: external-dns
+  labels:
+    app: ddns-updater
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ddns-updater
+  template:
+    metadata:
+      labels:
+        app: ddns-updater
+    spec:
+      containers:
+        - name: ddns-updater
+          image: qmcgaw/ddns-updater:latest
+          env:
+            - name: PERIOD
+              value: "5m"
+            - name: UPDATE_COOLDOWN_PERIOD
+              value: "5m"
+            - name: PUBLICIP_FETCHERS
+              value: "all"
+            - name: PUBLICIP_HTTP_PROVIDERS
+              value: "ipify,ifconfig"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: HEALTH_SERVER_ADDRESS
+              value: "0.0.0.0:9999"
+          ports:
+            - containerPort: 9999
+              name: health
+          volumeMounts:
+            - name: config
+              mountPath: /updater/data/config.json
+              subPath: config.json
+              readOnly: true
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "50m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: config
+          secret:
+            secretName: ddns-updater-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ddns-updater
+  namespace: external-dns
+spec:
+  selector:
+    app: ddns-updater
+  ports:
+    - port: 9999
+      targetPort: health
+      name: health
