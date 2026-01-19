@@ -33,7 +33,7 @@ spec:
     - /DATACENTER01/network/net-k8s-management
 
   # VM template - Ubuntu 24.04 LTS dalla Content Library
-  contentLibrary: cnt-lbr-esxi01
+  contentLibrary: cnt-lbr-k8s-esxi01
   cloneFrom: ubuntu-24.04-lts-cloudimg
   creationType: library
 
@@ -77,10 +77,9 @@ spec:
     - /DATACENTER01/network/net-k8s-services
 
   # VM template - Flatcar Stable dalla Content Library
-  # NOTA: Aggiorna il nome con la versione corrente dopo import
-  # Esegui: ./scripts/import-vm-templates.sh
-  contentLibrary: cnt-lbr-esxi01
-  cloneFrom: flatcar-stable-4152.2.1
+  # Versione importata: 4459.2.2 (Stable channel)
+  contentLibrary: cnt-lbr-k8s-esxi01
+  cloneFrom: flatcar-stable-4459.2.2
   creationType: library
 
   # VM resources - Worker
@@ -117,7 +116,7 @@ spec:
     - /DATACENTER01/network/net-k8s-services
 
   # VM template - Ubuntu 24.04 LTS dalla Content Library
-  contentLibrary: cnt-lbr-esxi01
+  contentLibrary: cnt-lbr-k8s-esxi01
   cloneFrom: ubuntu-24.04-lts-cloudimg
   creationType: library
 
