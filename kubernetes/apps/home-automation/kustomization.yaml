@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: home-automation
+
+resources:
+  - namespace.yaml
+  # Future implementations:
+  # - homeassistant/deployment.yaml
+  # - scrypted/deployment.yaml
+  # - homebridge/deployment.yaml
