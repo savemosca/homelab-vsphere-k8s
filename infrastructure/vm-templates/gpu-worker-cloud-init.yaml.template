@@ -2,6 +2,11 @@
 # Cloud-init per Worker Node con NVIDIA vGPU (Ubuntu Server 24.04 LTS)
 # GPU: Tesla P4 con profilo grid_p4-4q
 # Da usare come user-data nel template vSphere
+#
+# ISTRUZIONI:
+# 1. Copia questo file in gpu-worker-cloud-init.yaml
+# 2. Sostituisci SMB_USERNAME e SMB_PASSWORD con le credenziali reali
+# 3. NON committare gpu-worker-cloud-init.yaml (è nel .gitignore)
 
 package_update: true
 package_upgrade: true
@@ -12,21 +17,30 @@ packages:
   - ca-certificates
 
 runcmd:
-  # Installa NVIDIA vGPU Driver (GRID)
+  # Installa NVIDIA vGPU Driver (GRID) da share SMB
   - |
     if lspci | grep -i nvidia; then
       echo "NVIDIA vGPU detected, installing GRID drivers..."
 
-      # Per vGPU serve il driver GRID, non quello standard
-      # Il driver GRID va scaricato dal NVIDIA Licensing Portal
-      # e inserito nel template o in uno share accessibile
+      # Installa cifs-utils per montare la share
+      apt-get update
+      apt-get install -y cifs-utils
 
-      # Opzione 1: Driver pre-installato nel template
-      # Opzione 2: Download da share interno
-      # if [ -f /mnt/drivers/NVIDIA-Linux-x86_64-550.xxx-grid.run ]; then
-      #   chmod +x /mnt/drivers/NVIDIA-Linux-x86_64-550.xxx-grid.run
-      #   /mnt/drivers/NVIDIA-Linux-x86_64-550.xxx-grid.run --silent
-      # fi
+      # Monta la share con i driver GRID
+      mkdir -p /mnt/nvidia-drivers
+      mount -t cifs //srv05.mosca.lan/Software/NvidiaGrid/Guest_Drivers /mnt/nvidia-drivers \
+        -o username=SMB_USERNAME,password=SMB_PASSWORD,ro
+
+      # Installa il driver GRID 535
+      if [ -f /mnt/nvidia-drivers/nvidia-linux-grid-535_535.230.02_amd64.deb ]; then
+        dpkg -i /mnt/nvidia-drivers/nvidia-linux-grid-535_535.230.02_amd64.deb || apt-get install -f -y
+        echo "NVIDIA GRID driver 535 installed"
+      else
+        echo "ERROR: Driver .deb not found on share"
+      fi
+
+      # Smonta la share
+      umount /mnt/nvidia-drivers
 
       # Installa NVIDIA Container Toolkit
       curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
@@ -42,7 +56,7 @@ runcmd:
       nvidia-ctk runtime configure --runtime=containerd
       systemctl restart containerd
 
-      echo "NVIDIA Container Toolkit setup completed"
+      echo "NVIDIA vGPU setup completed"
     else
       echo "No NVIDIA GPU detected, skipping driver installation"
     fi

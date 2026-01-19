@@ -46,6 +46,9 @@ wireguard-conf/
 *.conf
 !*.conf.example
 
+# Cloud-init files with credentials
+infrastructure/vm-templates/gpu-worker-cloud-init.yaml
+
 # Kubernetes secrets with actual credentials
 *-secrets.yaml
 *-credentials.yaml
