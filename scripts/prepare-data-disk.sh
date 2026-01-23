@@ -77,8 +77,8 @@ check_args() {
 # Execute command on remote server via SSH
 ssh_exec() {
     local cmd="$1"
-    sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        "${SSH_USER}@${SERVER}" "echo '$SSH_PASSWORD' | sudo -S bash -c \"$cmd\"" 2>&1
+    sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+        "${SSH_USER}@${SERVER}" "echo '$SSH_PASSWORD' | sudo -S bash -c \"$cmd\"" 2>&1 | grep -v '^\[sudo\] password for'
 }
 
 # Check if sshpass is installed
@@ -103,7 +103,14 @@ validate_device() {
     fi
 
     # Check disk size
-    local size_gb=$(ssh_exec "lsblk -b -d -n -o SIZE $DEVICE | awk '{print int(\$1/1024/1024/1024)}'")
+    local size_gb=$(ssh_exec "lsblk -b -d -n -o SIZE $DEVICE 2>/dev/null | awk '{print int(\$1/1024/1024/1024)}'")
+    size_gb=$(echo "$size_gb" | tr -d '[:space:]' | grep -oE '[0-9]+')
+
+    if [ -z "$size_gb" ] || [ "$size_gb" -eq 0 ]; then
+        log_error "Unable to determine disk size"
+        exit 1
+    fi
+
     log_info "Disk size: ${size_gb}GB"
 
     if [ "$size_gb" -lt "$MIN_SIZE_GB" ]; then
@@ -138,48 +145,45 @@ create_partition() {
     log_info "Creating partition on $DEVICE..."
 
     # Wipe existing signatures
-    ssh_exec "wipefs -a $DEVICE 2>/dev/null || true"
+    ssh_exec "wipefs -a $DEVICE 2>/dev/null || true" >/dev/null 2>&1
 
     # Create new GPT partition table and single partition
-    ssh_exec "parted -s $DEVICE mklabel gpt"
-    ssh_exec "parted -s $DEVICE mkpart primary xfs 0% 100%"
+    ssh_exec "parted -s $DEVICE mklabel gpt" >/dev/null 2>&1
+    ssh_exec "parted -s $DEVICE mkpart primary xfs 0% 100%" >/dev/null 2>&1
 
     # Wait for kernel to recognize partition
-    ssh_exec "sleep 2 && partprobe $DEVICE && sleep 2"
+    ssh_exec "sleep 2 && partprobe $DEVICE && sleep 2" >/dev/null 2>&1
 
     # Determine partition name (sdb1 or nvme0n1p1)
-    local partition
+    PARTITION=""
     if [[ "$DEVICE" =~ "nvme" ]]; then
-        partition="${DEVICE}p1"
+        PARTITION="${DEVICE}p1"
     else
-        partition="${DEVICE}1"
+        PARTITION="${DEVICE}1"
     fi
 
-    local part_check=$(ssh_exec "[ -b $partition ] && echo 'exists' || echo 'missing'")
+    local part_check=$(ssh_exec "[ -b $PARTITION ] && echo 'exists' || echo 'missing'")
     if [[ "$part_check" == *"missing"* ]]; then
-        log_error "Partition $partition not created correctly"
+        log_error "Partition $PARTITION not created correctly"
         exit 1
     fi
 
-    log_success "Partition created: $partition"
-    echo "$partition"  # Return partition name
+    log_success "Partition created: $PARTITION"
 }
 
 create_filesystem() {
-    local partition="$1"
-    log_info "Creating XFS filesystem on $partition..."
+    log_info "Creating XFS filesystem on $PARTITION..."
 
-    ssh_exec "mkfs.xfs -f -L 'k3s-data' $partition"
+    ssh_exec "mkfs.xfs -f -L 'k3s-data' $PARTITION" >/dev/null 2>&1
 
     log_success "XFS filesystem created"
 }
 
 mount_filesystem() {
-    local partition="$1"
     log_info "Mounting filesystem on $MOUNT_POINT..."
 
-    ssh_exec "mkdir -p $MOUNT_POINT"
-    ssh_exec "mount $partition $MOUNT_POINT"
+    ssh_exec "mkdir -p $MOUNT_POINT" >/dev/null 2>&1
+    ssh_exec "mount $PARTITION $MOUNT_POINT" >/dev/null 2>&1
 
     # Verify mount
     local mount_verify=$(ssh_exec "mount | grep $MOUNT_POINT || echo 'not-mounted'")
@@ -193,29 +197,28 @@ mount_filesystem() {
 }
 
 add_to_fstab() {
-    local partition="$1"
     log_info "Adding entry to /etc/fstab for automatic mount..."
 
     # Get partition UUID
-    local uuid=$(ssh_exec "blkid -s UUID -o value $partition")
+    local uuid=$(ssh_exec "blkid -s UUID -o value $PARTITION 2>/dev/null" | tr -d '[:space:]')
 
     if [ -z "$uuid" ]; then
-        log_error "Unable to get UUID of $partition"
+        log_error "Unable to get UUID of $PARTITION"
         exit 1
     fi
 
     # Remove existing entries for this mount point
-    ssh_exec "sed -i '\\|$MOUNT_POINT|d' /etc/fstab"
+    ssh_exec "sed -i '\\|$MOUNT_POINT|d' /etc/fstab" >/dev/null 2>&1
 
     # Add new entry
-    ssh_exec "echo 'UUID=$uuid $MOUNT_POINT xfs defaults,noatime 0 2' >> /etc/fstab"
+    ssh_exec "echo 'UUID=$uuid $MOUNT_POINT xfs defaults,noatime 0 2' >> /etc/fstab" >/dev/null 2>&1
 
     log_success "Entry added to /etc/fstab"
     log_info "UUID: $uuid"
 
     # Test fstab
     log_info "Testing mount from fstab..."
-    ssh_exec "umount $MOUNT_POINT && mount $MOUNT_POINT"
+    ssh_exec "umount $MOUNT_POINT && mount $MOUNT_POINT" >/dev/null 2>&1
 
     local mount_verify=$(ssh_exec "mount | grep $MOUNT_POINT || echo 'not-mounted'")
     if [[ "$mount_verify" == *"not-mounted"* ]]; then
@@ -235,7 +238,6 @@ set_permissions() {
 }
 
 print_summary() {
-    local partition="$1"
     local disk_info=$(ssh_exec "df -h $MOUNT_POINT")
     local lsblk_info=$(ssh_exec "lsblk $DEVICE")
 
@@ -245,7 +247,7 @@ print_summary() {
     echo "=================================================="
     echo
     echo "Device:      $DEVICE"
-    echo "Partition:   $partition"
+    echo "Partition:   $PARTITION"
     echo "Mount Point: $MOUNT_POINT"
     echo "Filesystem:  XFS"
     echo
@@ -280,13 +282,13 @@ main() {
     validate_device
     confirm_operation
 
-    partition=$(create_partition)
-    create_filesystem "$partition"
-    mount_filesystem "$partition"
-    add_to_fstab "$partition"
+    create_partition
+    create_filesystem
+    mount_filesystem
+    add_to_fstab
     set_permissions
 
-    print_summary "$partition"
+    print_summary
 
     log_success "Disk ready for K3s/Rancher installation!"
 }

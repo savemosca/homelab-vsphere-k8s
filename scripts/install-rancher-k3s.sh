@@ -81,8 +81,8 @@ check_args() {
 # Execute command on remote server via SSH
 ssh_exec() {
     local cmd="$1"
-    sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        "${SSH_USER}@${SERVER}" "echo '$SSH_PASSWORD' | sudo -S bash -c \"$cmd\"" 2>&1
+    sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+        "${SSH_USER}@${SERVER}" "echo '$SSH_PASSWORD' | sudo -S bash -c \"$cmd\"" 2>&1 | grep -v '^\[sudo\] password for'
 }
 
 # Check if sshpass is installed
@@ -123,11 +123,17 @@ check_data_disk() {
         exit 1
     fi
 
-    local disk_size=$(ssh_exec "df -BG $K3S_DATA_DIR | tail -1 | awk '{print \$2}' | sed 's/G//'")
-    log_info "Data disk: $K3S_DATA_DIR - ${disk_size}GB available"
+    local disk_size=$(ssh_exec "df -BG $K3S_DATA_DIR 2>/dev/null | tail -1 | awk '{print \$2}' | sed 's/G//'")
+    disk_size=$(echo "$disk_size" | tr -d '[:space:]' | grep -oE '[0-9]+')
 
-    if [ "$disk_size" -lt 50 ]; then
-        log_warning "Disk < 50GB - may not be sufficient for production"
+    if [ -n "$disk_size" ]; then
+        log_info "Data disk: $K3S_DATA_DIR - ${disk_size}GB available"
+
+        if [ "$disk_size" -lt 50 ]; then
+            log_warning "Disk < 50GB - may not be sufficient for production"
+        fi
+    else
+        log_warning "Unable to determine disk size, continuing anyway"
     fi
 }
 
