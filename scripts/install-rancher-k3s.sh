@@ -82,7 +82,7 @@ check_args() {
 ssh_exec() {
     local cmd="$1"
     sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-        "${SSH_USER}@${SERVER}" "echo '$SSH_PASSWORD' | sudo -S bash -c \"$cmd\"" 2>&1 | grep -v '^\[sudo\] password for'
+        "${SSH_USER}@${SERVER}" "echo '$SSH_PASSWORD' | sudo -S bash -c \"$cmd\"" 2>&1 | sed '/^\[sudo\] password for/d'
 }
 
 # Check if sshpass is installed
