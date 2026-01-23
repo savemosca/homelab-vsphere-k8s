@@ -6,12 +6,12 @@ Remote installation scripts for Rancher on K3s for SRV22 server. These scripts r
 
 | Component | Version |
 |-----------|---------|
-| K3s | v1.34.6+k3s1 (Kubernetes 1.34.6) |
+| K3s | v1.34.3+k3s1 (Kubernetes 1.34.3) |
 | Rancher | v2.13.1 |
 | cert-manager | v1.19.2 |
 | Helm | v4.1.0 |
 
-**Note**: K3s v1.34.6 is used for compatibility with Rancher 2.13.1 (requires Kubernetes < 1.35.0).
+**Note**: K3s v1.34.3 is used for compatibility with Rancher 2.13.1 (requires Kubernetes < 1.35.0).
 
 ## Prerequisites
 
@@ -89,7 +89,7 @@ cd /Users/moscardini.s/Develope/homelab-vsphere-k8s/scripts
 
 Installation includes:
 1. **Dependencies** (curl, wget, jq, container-selinux, etc.)
-2. **K3s v1.34.6+k3s1** (Kubernetes 1.34.6) with data dir on `/mnt/k3s`
+2. **K3s v1.34.3+k3s1** (Kubernetes 1.34.3) with data dir on `/mnt/k3s`
 3. **Helm v4.1.0**
 4. **cert-manager v1.19.2**
 5. **Rancher v2.13.1**
