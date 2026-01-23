@@ -25,7 +25,7 @@ NC='\033[0m'
 SERVER="$1"
 SSH_USER="$2"
 SSH_PASSWORD="$3"
-DEVICE="$4"
+DEVICE="$4"  # Optional: if not provided, auto-detect
 MIN_SIZE_GB="${5:-50}"
 
 MOUNT_POINT="/mnt/k3s"
@@ -48,16 +48,20 @@ log_error() {
 }
 
 usage() {
-    echo "Usage: $0 <server> <ssh_user> <ssh_password> <device> [size_gb]"
+    echo "Usage: $0 <server> <ssh_user> <ssh_password> [device] [size_gb]"
     echo
     echo "Arguments:"
     echo "  server       - Target server hostname/IP (e.g., srv22.mosca.lan)"
     echo "  ssh_user     - SSH username (e.g., administrator)"
     echo "  ssh_password - SSH password"
-    echo "  device       - Block device (e.g., /dev/sdb, /dev/nvme0n1)"
+    echo "  device       - Block device (optional, auto-detected if not specified)"
     echo "  size_gb      - Minimum disk size in GB (default: 50)"
     echo
-    echo "Example:"
+    echo "Examples:"
+    echo "  # Auto-detect blank disk:"
+    echo "  $0 srv22.mosca.lan administrator 'MyPass123'"
+    echo
+    echo "  # Specify device explicitly:"
     echo "  $0 srv22.mosca.lan administrator 'MyPass123' /dev/sdb 50"
     echo
     echo "Available devices on target server:"
@@ -68,7 +72,7 @@ usage() {
 }
 
 check_args() {
-    if [ -z "$SERVER" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PASSWORD" ] || [ -z "$DEVICE" ]; then
+    if [ -z "$SERVER" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PASSWORD" ]; then
         log_error "Missing required arguments"
         usage
     fi
@@ -86,6 +90,56 @@ check_sshpass() {
     if ! command -v sshpass &> /dev/null; then
         log_error "sshpass is required but not installed"
         log_info "Install with: brew install sshpass"
+        exit 1
+    fi
+}
+
+find_blank_disk() {
+    if [ -n "$DEVICE" ]; then
+        log_info "Using specified device: $DEVICE"
+        return
+    fi
+
+    log_info "Auto-detecting blank disk on remote server..."
+
+    # Find disks without partitions and >= MIN_SIZE_GB
+    local blank_disks=$(ssh_exec "
+        for disk in /dev/sd[a-z] /dev/nvme[0-9]n[0-9]; do
+            [ -b \"\$disk\" ] || continue
+
+            # Check if disk has no partitions
+            part_count=\$(lsblk -n -o NAME \"\$disk\" 2>/dev/null | wc -l)
+            if [ \"\$part_count\" -eq 1 ]; then
+                # Get disk size in GB
+                size_bytes=\$(blockdev --getsize64 \"\$disk\" 2>/dev/null)
+                size_gb=\$((size_bytes / 1024 / 1024 / 1024))
+
+                if [ \"\$size_gb\" -ge $MIN_SIZE_GB ]; then
+                    echo \"\$disk:\$size_gb\"
+                fi
+            fi
+        done
+    " | grep -v '^\[sudo\]')
+
+    # Count blank disks found
+    local disk_count=$(echo "$blank_disks" | grep -c "^/dev/" || echo "0")
+
+    if [ "$disk_count" -eq 0 ]; then
+        log_error "No blank disk >= ${MIN_SIZE_GB}GB found"
+        log_info "Available disks:"
+        ssh_exec "lsblk -d -o NAME,SIZE,TYPE"
+        exit 1
+    elif [ "$disk_count" -eq 1 ]; then
+        DEVICE=$(echo "$blank_disks" | cut -d':' -f1)
+        local disk_size=$(echo "$blank_disks" | cut -d':' -f2)
+        log_success "Auto-detected blank disk: $DEVICE (${disk_size}GB)"
+    else
+        log_warning "Multiple blank disks found:"
+        echo "$blank_disks" | while IFS=: read disk size; do
+            echo "  $disk - ${size}GB"
+        done
+        log_error "Please specify which disk to use"
+        log_info "Example: $0 $SERVER $SSH_USER <password> /dev/sdb"
         exit 1
     fi
 }
