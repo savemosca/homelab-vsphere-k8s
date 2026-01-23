@@ -337,6 +337,7 @@ main() {
 
     check_args
     check_sshpass
+    find_blank_disk
     validate_device
     confirm_operation
 
