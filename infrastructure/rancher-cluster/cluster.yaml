@@ -1,9 +1,9 @@
 # Cluster RKE2 - homelab-k8s
 # Cluster Kubernetes workload su vSphere gestito da Rancher
 #
-# IMPORTANTE: A causa di un bug in Rancher 2.13.1, la creazione via API/CLI
-# genera errori "no matching controller owner ref". Il cluster DEVE essere
-# creato dalla UI di Rancher (Cluster Management -> Create -> VMware vSphere).
+# IMPORTANTE: Rancher 2.13.1 ha un bug in CAPI che genera errori "no matching controller owner ref"
+# quando si crea il cluster via API/CLI o UI. La creazione via Rancher non funziona.
+# Soluzione: Provisioning manuale + registrazione in Rancher.
 #
 # Questo file serve come documentazione della configurazione target.
 #
