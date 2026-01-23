@@ -102,10 +102,13 @@ validate_device() {
         exit 1
     fi
 
-    # Check disk size
-    local size_gb=$(ssh_exec "lsblk -b -d -n -o SIZE $DEVICE 2>/dev/null | awk '{print int(\$1/1024/1024/1024)}'")
-    # Remove sudo prompt and extract only the number
-    size_gb=$(echo "$size_gb" | grep -v '^\[sudo\]' | tr -d '[:space:]' | grep -oE '[0-9]+' | head -1)
+    # Check disk size using blockdev (more reliable than lsblk)
+    local size_bytes=$(ssh_exec "blockdev --getsize64 $DEVICE 2>/dev/null")
+    # Extract only numbers, removing any sudo prompts or whitespace
+    size_bytes=$(echo "$size_bytes" | tr -d '[:space:]' | grep -oE '[0-9]+' | head -1)
+
+    # Convert bytes to GB
+    local size_gb=$((size_bytes / 1024 / 1024 / 1024))
 
     if [ -z "$size_gb" ] || [ "$size_gb" -eq 0 ]; then
         log_error "Unable to determine disk size"
