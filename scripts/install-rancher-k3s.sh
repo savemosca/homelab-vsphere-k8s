@@ -11,7 +11,7 @@
 #   ./install-rancher-k3s.sh srv22.mosca.lan administrator 'password' rancher.savemosca.com
 #
 # Installed versions:
-#   - K3s: v1.35.0+k3s1
+#   - K3s: v1.34.6+k3s1 (Kubernetes 1.34.6)
 #   - Rancher: v2.13.1
 #   - cert-manager: v1.19.2
 #   - Helm: v4.1.0
@@ -35,7 +35,7 @@ RANCHER_HOSTNAME="${4:-rancher.savemosca.com}"
 
 # Configuration
 K3S_DATA_DIR="/mnt/k3s"
-K3S_VERSION="v1.35.0+k3s1"
+K3S_VERSION="v1.34.6+k3s1"
 RANCHER_VERSION="2.13.1"
 CERT_MANAGER_VERSION="v1.19.2"
 HELM_VERSION="v4.1.0"
