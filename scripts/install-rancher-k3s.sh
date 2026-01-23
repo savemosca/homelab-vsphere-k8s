@@ -124,7 +124,8 @@ check_data_disk() {
     fi
 
     local disk_size=$(ssh_exec "df -BG $K3S_DATA_DIR 2>/dev/null | tail -1 | awk '{print \$2}' | sed 's/G//'")
-    disk_size=$(echo "$disk_size" | tr -d '[:space:]' | grep -oE '[0-9]+')
+    # Remove sudo prompt and extract only the number
+    disk_size=$(echo "$disk_size" | grep -v '^\[sudo\]' | tr -d '[:space:]' | grep -oE '[0-9]+' | head -1)
 
     if [ -n "$disk_size" ]; then
         log_info "Data disk: $K3S_DATA_DIR - ${disk_size}GB available"
