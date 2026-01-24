@@ -37,13 +37,16 @@ param(
     [PSCredential]$Credential,
 
     [Parameter(Mandatory = $false)]
-    [string]$DownloadPath = "$env:TEMP/vm-templates",
+    [string]$DownloadPath = "",
 
     [Parameter(Mandatory = $false)]
     [switch]$FlatcarOnly,
 
     [Parameter(Mandatory = $false)]
-    [switch]$UbuntuOnly
+    [switch]$UbuntuOnly,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$PhotonOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -55,6 +58,10 @@ $FlatcarOvaName = "flatcar_production_vmware_ova.ova"
 # Ubuntu Cloud Images - 24.04 LTS (Noble Numbat)
 $UbuntuBaseUrl = "https://cloud-images.ubuntu.com/noble/current"
 $UbuntuOvaName = "noble-server-cloudimg-amd64.ova"
+
+# VMware Photon OS 5.0 (Hardware Version 15)
+$PhotonUrl = "https://packages.vmware.com/photon/5.0/GA/ova/photon-hw15-5.0-dde71ec57.x86_64.ova"
+$PhotonOvaName = "photon-hw15-5.0-dde71ec57.x86_64.ova"
 
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO")
@@ -149,9 +156,20 @@ function Import-ToContentLibrary {
 Write-Log "=== Import VM Templates to vSphere ===" -Level INFO
 Write-Log ""
 
+# Imposta directory download
+if ([string]::IsNullOrEmpty($DownloadPath)) {
+    if ($IsWindows -or $PSVersionTable.PSEdition -eq "Desktop") {
+        $DownloadPath = Join-Path $env:TEMP "vm-templates"
+    } else {
+        # macOS/Linux
+        $DownloadPath = Join-Path $HOME ".cache/vm-templates"
+    }
+}
+
 # Crea directory download
 if (-not (Test-Path $DownloadPath)) {
     New-Item -ItemType Directory -Path $DownloadPath -Force | Out-Null
+    Write-Log "Directory download creata: $DownloadPath" -Level INFO
 }
 
 # Connessione a vCenter
@@ -177,7 +195,7 @@ Write-Log "Content Library trovata: $ContentLibrary" -Level SUCCESS
 
 try {
     # Import Flatcar
-    if (-not $UbuntuOnly) {
+    if (-not $UbuntuOnly -and -not $PhotonOnly) {
         Write-Log ""
         Write-Log "=== Flatcar Container Linux (Stable) ===" -Level INFO
 
@@ -190,7 +208,7 @@ try {
     }
 
     # Import Ubuntu
-    if (-not $FlatcarOnly) {
+    if (-not $FlatcarOnly -and -not $PhotonOnly) {
         Write-Log ""
         Write-Log "=== Ubuntu Server 24.04 LTS (Noble) ===" -Level INFO
 
@@ -199,6 +217,17 @@ try {
 
         Download-Template -Url $ubuntuUrl -OutputPath $ubuntuLocalPath -Name "Ubuntu 24.04 LTS"
         Import-ToContentLibrary -OvaPath $ubuntuLocalPath -LibraryName $ContentLibrary -ItemName "ubuntu-24.04-lts-cloudimg"
+    }
+
+    # Import Photon OS
+    if (-not $FlatcarOnly -and -not $UbuntuOnly) {
+        Write-Log ""
+        Write-Log "=== VMware Photon OS 5.0 ===" -Level INFO
+
+        $photonLocalPath = Join-Path $DownloadPath $PhotonOvaName
+
+        Download-Template -Url $PhotonUrl -OutputPath $photonLocalPath -Name "Photon OS 5.0"
+        Import-ToContentLibrary -OvaPath $photonLocalPath -LibraryName $ContentLibrary -ItemName "photon-5.0-ova"
     }
 
     Write-Log ""

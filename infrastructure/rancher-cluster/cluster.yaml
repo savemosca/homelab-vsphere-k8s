@@ -95,12 +95,12 @@ spec:
           node-role.kubernetes.io/control-plane: "true"
 
       #=========================================================================
-      # WORKERS STANDARD - Flatcar Container Linux
+      # WORKERS STANDARD - Photon OS 5.0
       #=========================================================================
       # - 2 nodi
-      # - unhealthyNodeTimeout: 5m = ricrea se unhealthy (effimeri)
+      # - unhealthyNodeTimeout: 5m
       # - Folder: k8s-workers
-      # - Networks: VLAN 36 (workload) + VLAN 37 (services/MetalLB)
+      # - Network: VLAN 36+37 (workload + services)
       - name: workers
         etcdRole: false
         controlPlaneRole: false
@@ -111,7 +111,7 @@ spec:
         machineOS: linux
         machineConfigRef:
           kind: VmwarevsphereConfig
-          name: homelab-worker-flatcar
+          name: homelab-worker-photon
         labels:
           node.kubernetes.io/pool: workers
 
