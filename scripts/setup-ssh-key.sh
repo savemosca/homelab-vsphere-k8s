@@ -111,18 +111,18 @@ configure_passwordless_sudo() {
 
     {
         printf '%s\n' "$SSH_PASSWORD"
-        cat <<'SCRIPT'
-# Create sudoers drop-in file
-SUDOERS_FILE="/etc/sudoers.d/90-${USER}-nopasswd"
-echo "${USER} ALL=(ALL) NOPASSWD: ALL" > "$SUDOERS_FILE"
-chmod 440 "$SUDOERS_FILE"
+        cat <<SCRIPT
+# Create sudoers drop-in file for ${SSH_USER}
+SUDOERS_FILE="/etc/sudoers.d/90-${SSH_USER}-nopasswd"
+echo "${SSH_USER} ALL=(ALL) NOPASSWD: ALL" > "\$SUDOERS_FILE"
+chmod 440 "\$SUDOERS_FILE"
 
 # Validate sudoers file
-if visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
-    echo "Passwordless sudo configured"
+if visudo -c -f "\$SUDOERS_FILE" >/dev/null 2>&1; then
+    echo "Passwordless sudo configured for ${SSH_USER}"
 else
     echo "ERROR: Invalid sudoers file"
-    rm -f "$SUDOERS_FILE"
+    rm -f "\$SUDOERS_FILE"
     exit 1
 fi
 SCRIPT
