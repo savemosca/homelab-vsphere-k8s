@@ -222,6 +222,15 @@ configure_firewall() {
     ssh_exec "firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=10.42.0.0/16 accept'"  # Pod network (--cluster-cidr)
     ssh_exec "firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=10.43.0.0/16 accept'"  # Service network (--service-cidr)
 
+    # CRITICAL: Add CNI interfaces to trusted zone for pod-to-pod communication
+    # Without this, Traefik cannot reach backend pods (causes 502 Bad Gateway)
+    ssh_exec "firewall-cmd --permanent --zone=trusted --add-interface=cni0 2>/dev/null || true"
+    ssh_exec "firewall-cmd --permanent --zone=trusted --add-interface=flannel.1 2>/dev/null || true"
+    ssh_exec "firewall-cmd --permanent --zone=trusted --add-interface=vxlan.calico 2>/dev/null || true"
+    
+    # Add masquerade for pod network NAT
+    ssh_exec "firewall-cmd --permanent --add-masquerade"
+
     ssh_exec "firewall-cmd --reload"
 
     log_success "Firewall configured"
@@ -436,7 +445,8 @@ apply_rancher_network_policy() {
     log_info "Applying network policy to restrict Rancher access..."
 
     # Create network policy that allows only Traefik to reach Rancher pods
-    # This mitigates the security risk of tls=external (HTTP internal communication)
+    # With tls=external, Rancher pods listen on port 80 only (HTTP)
+    # Port 443 is handled by Traefik, not by Rancher pods
     ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && cat <<'NETPOL' | /usr/local/bin/k3s kubectl apply -f -
 ---
 apiVersion: networking.k8s.io/v1
@@ -451,7 +461,7 @@ spec:
   policyTypes:
   - Ingress
   ingress:
-  # Allow traffic from Traefik ingress controller
+  # Allow traffic from Traefik ingress controller (port 80 - Rancher with tls=external)
   - from:
     - namespaceSelector:
         matchLabels:
@@ -462,16 +472,22 @@ spec:
     ports:
     - protocol: TCP
       port: 80
-    - protocol: TCP
-      port: 444
-  # Allow traffic from same namespace (for webhooks, internal communication)
+  # Allow traffic from same namespace (webhooks, fleet, internal services)
   - from:
     - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 80
-    - protocol: TCP
-      port: 444
+  # Allow traffic from cattle-fleet namespaces
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: cattle-fleet-system
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: cattle-fleet-local-system
+  # Allow Kubernetes API server for webhooks
+  - from:
+    - ipBlock:
+        cidr: 10.43.0.0/16
 NETPOL
 "
 
@@ -571,8 +587,10 @@ main() {
     # Install stack
     install_k3s
     install_helm
+    upgrade_traefik
     install_cert_manager
     install_rancher
+    apply_rancher_network_policy
 
     # Post-installation configuration
     configure_kubeconfig_access
