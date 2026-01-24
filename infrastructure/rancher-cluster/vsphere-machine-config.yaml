@@ -45,6 +45,18 @@ diskSize: "50000"
 cloudConfig: |
   #cloud-config
   package_update: true
+  
+  # Disabilita IPv6 permanentemente via sysctl.d
+  write_files:
+    - path: /etc/sysctl.d/99-disable-ipv6.conf
+      content: |
+        net.ipv6.conf.all.disable_ipv6 = 1
+        net.ipv6.conf.default.disable_ipv6 = 1
+        net.ipv6.conf.lo.disable_ipv6 = 1
+  
+  runcmd:
+    - sysctl -p /etc/sysctl.d/99-disable-ipv6.conf
+  
   packages:
     - curl
     - open-iscsi
@@ -98,6 +110,13 @@ cloudConfig: |
   
   # Script per aggiornamenti automatici periodici
   write_files:
+    # Disabilita IPv6 permanentemente
+    - path: /etc/sysctl.d/99-disable-ipv6.conf
+      content: |
+        net.ipv6.conf.all.disable_ipv6 = 1
+        net.ipv6.conf.default.disable_ipv6 = 1
+        net.ipv6.conf.lo.disable_ipv6 = 1
+    
     - path: /etc/systemd/system/auto-update.service
       permissions: '0644'
       content: |
@@ -126,6 +145,8 @@ cloudConfig: |
         WantedBy=timers.target
   
   runcmd:
+    # Applica sysctl per disabilitare IPv6
+    - sysctl -p /etc/sysctl.d/99-disable-ipv6.conf
     # Abilita servizi storage
     - systemctl enable --now iscsid
     - systemctl enable --now nfs-common
@@ -170,6 +191,13 @@ cloudConfig: |
   #cloud-config
   package_update: true
   package_upgrade: true
+  
+  # Disabilita IPv6 per evitare problemi con VMware Tools e DHCP
+  bootcmd:
+    - echo "net.ipv6.conf.all.disable_ipv6 = 1" >> /etc/sysctl.conf
+    - echo "net.ipv6.conf.default.disable_ipv6 = 1" >> /etc/sysctl.conf
+    - sysctl -p
+  
   packages:
     - curl
     - gnupg
@@ -184,11 +212,11 @@ cloudConfig: |
         network:
           version: 2
           ethernets:
-            # Match seconda NIC in modo più robusto
-            # Accetta ens192, ens224, etc. (qualsiasi dopo ens160)
+            # Match solo seconda NIC escludendo ens160
+            # Pattern negativo netplan: ens!(160) = qualsiasi ens tranne ens160
             second-nic:
               match:
-                name: \"ens[1-9]*\"
+                name: \"ens!(160)\"
               dhcp4: true
               dhcp4-overrides:
                 use-routes: false
@@ -222,6 +250,8 @@ cloudConfig: |
         WantedBy=multi-user.target
 
   runcmd:
+    # Applica sysctl per disabilitare IPv6
+    - sysctl -p /etc/sysctl.d/99-disable-ipv6.conf
     # Applica netplan per seconda NIC
     - netplan apply
 
