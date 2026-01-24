@@ -80,11 +80,12 @@ folder: /DATACENTER01/vm/Kubernetes VMs/k8s-workers
 pool: /DATACENTER01/host/CLUSTER01/Resources
 
 # Network - Dual NIC:
-#   NIC1 (ens160): net-k8s-workload (VLAN 36) - DHCP attivo, default route
-#   NIC2 (ens192): net-k8s-services (VLAN 37) - NO DHCP (MetalLB LoadBalancer IPs)
+#   NIC1 (ens160): net-k8s-services (VLAN 37) - NO DHCP (MetalLB LoadBalancer IPs)
+#   NIC2 (ens192): net-k8s-workload (VLAN 36) - DHCP attivo, default route
+# IMPORTANTE: L'ordine qui definisce quale NIC è "adapter 1" in vSphere e quindi ens160
 network:
-  - /DATACENTER01/network/net-k8s-workload
   - /DATACENTER01/network/net-k8s-services
+  - /DATACENTER01/network/net-k8s-workload
 
 # VM template - Ubuntu 24.04 LTS dalla Content Library
 contentLibrary: cnt-lbr-k8s-esxi01
@@ -188,9 +189,10 @@ folder: /DATACENTER01/vm/Kubernetes VMs/k8s-workers
 pool: /DATACENTER01/host/CLUSTER01/Resources
 
 # Network - Dual NIC (stesso setup dei worker standard)
+# ens160 = services (no DHCP), ens192 = workload (DHCP)
 network:
-  - /DATACENTER01/network/net-k8s-workload
   - /DATACENTER01/network/net-k8s-services
+  - /DATACENTER01/network/net-k8s-workload
 
 # VM template - Ubuntu 24.04 LTS dalla Content Library
 contentLibrary: cnt-lbr-k8s-esxi01
