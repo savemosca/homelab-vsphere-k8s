@@ -107,16 +107,10 @@ cloudConfig: |
   packages:
     - open-iscsi
     - nfs-common
+    - open-vm-tools
   
   # Script per aggiornamenti automatici periodici
   write_files:
-    # Disabilita IPv6 permanentemente
-    - path: /etc/sysctl.d/99-disable-ipv6.conf
-      content: |
-        net.ipv6.conf.all.disable_ipv6 = 1
-        net.ipv6.conf.default.disable_ipv6 = 1
-        net.ipv6.conf.lo.disable_ipv6 = 1
-    
     # Configura esplicitamente entrambe le NIC
     - path: /etc/netplan/99-k8s-network.yaml
       content: |
@@ -161,8 +155,6 @@ cloudConfig: |
         WantedBy=timers.target
   
   runcmd:
-    # Applica sysctl per disabilitare IPv6
-    - sysctl -p /etc/sysctl.d/99-disable-ipv6.conf
     # Applica configurazione rete
     - netplan apply
     # Abilita servizi storage
@@ -270,9 +262,10 @@ cloudConfig: |
         WantedBy=multi-user.target
 
   runcmd:
-    # Applica sysctl per disabilitare IPv6
-    - sysctl -p /etc/sysctl.d/99-disable-ipv6.conf
-    # Applica netplan per seconda NIC
+    # Installa VMware Tools per vSphere guest info
+    - apt-get update
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y open-vm-tools
+    # Applica netplan per configurazione rete
     - netplan apply
 
     # Installa NVIDIA Driver se GPU presente
