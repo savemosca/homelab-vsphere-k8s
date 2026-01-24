@@ -215,15 +215,13 @@ configure_selinux() {
 install_dependencies() {
     log_info "Installing dependencies..."
 
-    ssh_exec "dnf install -y curl wget tar jq git container-selinux iptables conntrack-tools"
+    ssh_exec "dnf install -y curl wget tar jq container-selinux iptables conntrack-tools"
 
     log_success "Dependencies installed"
 }
 
 install_k3s() {
     log_info "Installing K3s $K3S_VERSION with data dir: $K3S_DATA_DIR..."
-
-    ssh_exec "mkdir -p $K3S_DATA_DIR/{server,agent}"
 
     ssh_exec "curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION='$K3S_VERSION' INSTALL_K3S_EXEC='server --data-dir=$K3S_DATA_DIR' sh -"
 
@@ -309,9 +307,13 @@ configure_kubeconfig_access() {
     ssh_exec "groupadd -f k3s-access"
     ssh_exec "mkdir -p /etc/rancher/k3s-access && cp /etc/rancher/k3s/k3s.yaml /etc/rancher/k3s-access/kubeconfig && chgrp k3s-access /etc/rancher/k3s-access/kubeconfig && chmod 640 /etc/rancher/k3s-access/kubeconfig"
 
-    log_info "To grant access to a user:"
-    log_info "  usermod -a -G k3s-access <username>"
-    log_info "  echo 'export KUBECONFIG=/etc/rancher/k3s-access/kubeconfig' >> /home/<username>/.bashrc"
+    # Add SSH user to k3s-access group and configure bashrc
+    log_info "Granting kubectl access to user: $SSH_USER"
+    ssh_exec "usermod -a -G k3s-access $SSH_USER"
+    ssh_exec "grep -q 'KUBECONFIG=/etc/rancher/k3s-access/kubeconfig' /home/$SSH_USER/.bashrc 2>/dev/null || echo 'export KUBECONFIG=/etc/rancher/k3s-access/kubeconfig' >> /home/$SSH_USER/.bashrc"
+
+    log_success "User $SSH_USER configured for kubectl access"
+    log_info "User must re-login or run: newgrp k3s-access"
 }
 
 print_summary() {
