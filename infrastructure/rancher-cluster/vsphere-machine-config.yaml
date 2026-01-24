@@ -80,8 +80,8 @@ folder: /DATACENTER01/vm/Kubernetes VMs/k8s-workers
 pool: /DATACENTER01/host/CLUSTER01/Resources
 
 # Network - Dual NIC:
-#   NIC1: net-k8s-workload (VLAN 36) - Pod traffic, node communication
-#   NIC2: net-k8s-services (VLAN 37) - MetalLB LoadBalancer IPs
+#   NIC1 (ens160): net-k8s-workload (VLAN 36) - DHCP attivo, default route
+#   NIC2 (ens192): net-k8s-services (VLAN 37) - NO DHCP (MetalLB LoadBalancer IPs)
 network:
   - /DATACENTER01/network/net-k8s-workload
   - /DATACENTER01/network/net-k8s-services
@@ -117,6 +117,22 @@ cloudConfig: |
         net.ipv6.conf.default.disable_ipv6 = 1
         net.ipv6.conf.lo.disable_ipv6 = 1
     
+    # Configura esplicitamente entrambe le NIC
+    - path: /etc/netplan/99-k8s-network.yaml
+      content: |
+        network:
+          version: 2
+          ethernets:
+            # NIC1 workload - DHCP con default route
+            ens160:
+              dhcp4: true
+              dhcp6: false
+            # NIC2 services - NO DHCP, configurata da MetalLB
+            ens192:
+              dhcp4: false
+              dhcp6: false
+              optional: true
+    
     - path: /etc/systemd/system/auto-update.service
       permissions: '0644'
       content: |
@@ -147,6 +163,8 @@ cloudConfig: |
   runcmd:
     # Applica sysctl per disabilitare IPv6
     - sysctl -p /etc/sysctl.d/99-disable-ipv6.conf
+    # Applica configurazione rete
+    - netplan apply
     # Abilita servizi storage
     - systemctl enable --now iscsid
     - systemctl enable --now nfs-common
@@ -171,7 +189,7 @@ datastore: datastore02-local-raid
 folder: /DATACENTER01/vm/Kubernetes VMs/k8s-workers
 pool: /DATACENTER01/host/CLUSTER01/Resources
 
-# Network - Dual NIC (come worker standard)
+# Network - Dual NIC (stesso setup dei worker standard)
 network:
   - /DATACENTER01/network/net-k8s-workload
   - /DATACENTER01/network/net-k8s-services
@@ -181,10 +199,10 @@ contentLibrary: cnt-lbr-k8s-esxi01
 cloneFrom: ubuntu-24.04-lts-cloudimg
 creationType: library
 
-# VM resources - GPU Worker (più risorse)
-cpuCount: "8"
-memorySize: "32768"
-diskSize: "100000"
+# VM resources - GPU Worker (stesse risorse dei worker standard)
+cpuCount: "4"
+memorySize: "8192"
+diskSize: "80000"
 
 # Cloud-init con NVIDIA driver setup
 cloudConfig: |
@@ -212,12 +230,14 @@ cloudConfig: |
         network:
           version: 2
           ethernets:
-            # Match solo seconda NIC escludendo ens160
-            # Pattern negativo netplan: ens!(160) = qualsiasi ens tranne ens160
-            second-nic:
-              match:
-                name: \"ens!(160)\"
+            # NIC1 workload - DHCP con default route
+            ens160:
               dhcp4: true
+              dhcp6: false
+            # NIC2 services - DHCP ma senza route/DNS (per MetalLB)
+            ens192:
+              dhcp4: true
+              dhcp6: false
               dhcp4-overrides:
                 use-routes: false
                 use-dns: false
