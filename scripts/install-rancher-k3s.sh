@@ -291,8 +291,8 @@ install_rancher() {
     local bootstrap_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
 
     # Install Rancher with tls=external (TLS termination handled by Traefik ingress)
-    # WARNING: Rancher pods communicate internally via HTTP (port 80). Ensure network-level
-    # access controls are in place - only Traefik should reach Rancher pods directly.
+    # NOTE: Rancher pods communicate internally via HTTP (port 80).
+    # A NetworkPolicy will be applied to restrict access to Traefik only.
     ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/helm install rancher rancher-stable/rancher --namespace cattle-system --set hostname='$RANCHER_HOSTNAME' --set replicas=1 --set bootstrapPassword='$bootstrap_password' --set tls=external --version $RANCHER_VERSION --wait --timeout 10m"
 
     ssh_exec "echo '$bootstrap_password' > /root/.rancher-bootstrap-password && chmod 600 /root/.rancher-bootstrap-password"
@@ -303,6 +303,10 @@ install_rancher() {
     ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/k3s kubectl -n cattle-system wait --for=condition=ready pod -l app=rancher --timeout=600s"
 
     log_success "Rancher is ready!"
+
+    # Apply network policy to restrict access to Rancher pods
+    apply_rancher_network_policy
+
     echo
     echo "=================================================="
     echo "RANCHER ACCESS INFORMATION"
@@ -314,6 +318,52 @@ install_rancher() {
     echo "Password also saved in: /root/.rancher-bootstrap-password"
     echo "=================================================="
     echo
+}
+
+apply_rancher_network_policy() {
+    log_info "Applying network policy to restrict Rancher access..."
+
+    # Create network policy that allows only Traefik to reach Rancher pods
+    # This mitigates the security risk of tls=external (HTTP internal communication)
+    ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && cat <<'NETPOL' | /usr/local/bin/k3s kubectl apply -f -
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rancher-access-control
+  namespace: cattle-system
+spec:
+  podSelector:
+    matchLabels:
+      app: rancher
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow traffic from Traefik ingress controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: traefik
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 444
+  # Allow traffic from same namespace (for webhooks, internal communication)
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 444
+NETPOL
+"
+
+    log_success "Network policy applied - Rancher access restricted to Traefik only"
 }
 
 configure_kubeconfig_access() {
