@@ -265,6 +265,16 @@ configure_selinux_data_dir() {
     log_success "SELinux context applied to $K3S_DATA_DIR"
 }
 
+configure_ipv4_preference() {
+    log_info "Configuring IPv4 preference for network connections..."
+    
+    # Force gai.conf to prefer IPv4 over IPv6 for external connections
+    # This fixes Helm repo connectivity issues when IPv6 is not available
+    ssh_exec "grep -q 'precedence ::ffff:0:0/96  100' /etc/gai.conf 2>/dev/null || echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf"
+    
+    log_success "IPv4 preference configured"
+}
+
 install_dependencies() {
     log_info "Installing dependencies..."
 
@@ -583,6 +593,7 @@ main() {
     configure_selinux
     install_dependencies
     configure_selinux_data_dir
+    configure_ipv4_preference
 
     # Install stack
     install_k3s
