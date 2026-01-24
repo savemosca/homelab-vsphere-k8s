@@ -100,10 +100,9 @@ diskSize: "80000"
 # Cloud-init config per Ubuntu
 cloudConfig: |
   #cloud-config
-  # Aggiornamento completo al primo boot
-  package_update: true
-  package_upgrade: true
-  package_reboot_if_required: true
+  # NON fare upgrade al primo boot per evitare reboot prima di netplan apply
+  package_update: false
+  package_upgrade: false
   
   packages:
     - open-iscsi
