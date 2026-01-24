@@ -190,6 +190,11 @@ configure_firewall() {
     ssh_exec "firewall-cmd --permanent --add-port=8472/udp"   # Flannel VXLAN
     ssh_exec "firewall-cmd --permanent --add-port=80/tcp"     # HTTP
     ssh_exec "firewall-cmd --permanent --add-port=443/tcp"    # HTTPS
+
+    # Allow pod-to-pod and service communication
+    ssh_exec "firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=10.42.0.0/16 accept'"  # Pod network
+    ssh_exec "firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=10.43.0.0/16 accept'"  # Service network
+
     ssh_exec "firewall-cmd --reload"
 
     log_success "Firewall configured"
@@ -275,7 +280,7 @@ install_rancher() {
 
     local bootstrap_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
 
-    ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/helm install rancher rancher-stable/rancher --namespace cattle-system --set hostname='$RANCHER_HOSTNAME' --set replicas=1 --set bootstrapPassword='$bootstrap_password' --version $RANCHER_VERSION --wait --timeout 10m"
+    ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/helm install rancher rancher-stable/rancher --namespace cattle-system --set hostname='$RANCHER_HOSTNAME' --set replicas=1 --set bootstrapPassword='$bootstrap_password' --set tls=external --version $RANCHER_VERSION --wait --timeout 10m"
 
     ssh_exec "echo '$bootstrap_password' > /root/.rancher-bootstrap-password && chmod 600 /root/.rancher-bootstrap-password"
 
