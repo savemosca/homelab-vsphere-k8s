@@ -16,8 +16,8 @@ Remote installation scripts for Rancher on K3s for SRV22 server. These scripts r
 ## Prerequisites
 
 ### macOS Workstation
-- `sshpass` installed: `brew install sshpass`
-- SSH access to target server
+- SSH client (pre-installed on macOS)
+- SSH key pair (e.g., `~/.ssh/id_ed25519`)
 - Network connectivity to SRV22
 
 ### Target Server (SRV22)
@@ -38,19 +38,27 @@ Remote installation scripts for Rancher on K3s for SRV22 server. These scripts r
 
 ## Installation Steps
 
-### Step 1: Identify Data Disk
+### Step 1: Setup SSH Key Authentication (One-time)
 
-SSH to the server to identify the data disk:
+Configure SSH key authentication and passwordless sudo:
 
 ```bash
-ssh administrator@srv22.mosca.lan
-lsblk -d
+cd /Users/moscardini.s/Develope/homelab-vsphere-k8s/scripts
 
-# Example output:
-# NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
-# sda      8:0    0   80G  0 disk            <- OS disk
-# sdb      8:16   0   50G  0 disk            <- Data disk for K3s
+# Setup SSH key authentication (uses password once)
+./setup-ssh-key.sh srv22.mosca.lan administrator 'YourPassword'
+
+# Or specify custom SSH key
+./setup-ssh-key.sh 192.168.11.130 administrator 'YourPassword' ~/.ssh/id_rsa.pub
 ```
+
+The script will:
+
+1. Copy your SSH public key to the server
+2. Configure passwordless sudo for the user
+3. Test both SSH key auth and passwordless sudo
+
+After this step, all subsequent scripts will use SSH keys (no password needed).
 
 ### Step 2: Prepare Data Disk
 
@@ -61,17 +69,22 @@ Run from your Mac:
 ```bash
 cd /Users/moscardini.s/Develope/homelab-vsphere-k8s/scripts
 
-# Prepare disk (example: /dev/sdb with 50GB minimum)
-./prepare-data-disk.sh srv22.mosca.lan administrator 'Netribe$1' /dev/sdb 50
+# Auto-detect blank disk (recommended)
+./prepare-data-disk.sh srv22.mosca.lan administrator
+
+# Or specify disk explicitly
+./prepare-data-disk.sh 192.168.11.130 administrator /dev/sdb 50
 ```
 
 The script will:
-1. Verify disk exists and meets size requirements
+
+1. Auto-detect blank disk ≥50GB (or use specified device)
 2. Create GPT partition
 3. Format with XFS filesystem
 4. Mount to `/mnt/k3s`
 5. Add entry to `/etc/fstab` for automatic mounting
 6. Configure permissions
+7. Apply SELinux context (if enforcing)
 
 ### Step 3: Install K3s and Rancher
 
@@ -81,18 +94,22 @@ Run from your Mac:
 cd /Users/moscardini.s/Develope/homelab-vsphere-k8s/scripts
 
 # Install with default hostname (rancher.savemosca.com)
-./install-rancher-k3s.sh srv22.mosca.lan administrator 'Netribe$1'
+./install-rancher-k3s.sh srv22.mosca.lan administrator
 
 # Or specify custom hostname
-./install-rancher-k3s.sh srv22.mosca.lan administrator 'Netribe$1' rancher.savemosca.com
+./install-rancher-k3s.sh 192.168.11.130 administrator rancher.savemosca.com
 ```
 
 Installation includes:
-1. **Dependencies** (curl, wget, jq, container-selinux, etc.)
-2. **K3s v1.34.3+k3s1** (Kubernetes 1.34.3) with data dir on `/mnt/k3s`
-3. **Helm v4.1.0**
-4. **cert-manager v1.19.2**
-5. **Rancher v2.13.1**
+
+1. **Firewall configuration** (K3s ports + pod network CIDRs)
+2. **SELinux context** for `/mnt/k3s` (if enforcing)
+3. **Dependencies** (curl, wget, jq, container-selinux, policycoreutils-python-utils, etc.)
+4. **K3s v1.34.3+k3s1** (Kubernetes 1.34.3) with data dir on `/mnt/k3s`
+5. **Helm v4.1.0**
+6. **cert-manager v1.19.2**
+7. **Rancher v2.13.1** with `tls=external` (Traefik handles TLS)
+8. **NetworkPolicy** to restrict Rancher pod access to Traefik only
 
 **Duration**: ~5-10 minutes
 
