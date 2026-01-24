@@ -79,10 +79,14 @@ check_args() {
 }
 
 # Execute command on remote server via SSH
+# Uses heredoc to avoid command injection and quoting issues
 ssh_exec() {
     local cmd="$1"
     sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-        "${SSH_USER}@${SERVER}" "sudo -S bash -c \"$cmd\" <<< '$SSH_PASSWORD'" 2>&1
+        "${SSH_USER}@${SERVER}" 'sudo -S bash -s' <<EOF 2>&1
+$SSH_PASSWORD
+$cmd
+EOF
 }
 
 # Check if sshpass is installed
@@ -191,9 +195,10 @@ configure_firewall() {
     ssh_exec "firewall-cmd --permanent --add-port=80/tcp"     # HTTP
     ssh_exec "firewall-cmd --permanent --add-port=443/tcp"    # HTTPS
 
-    # Allow pod-to-pod and service communication
-    ssh_exec "firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=10.42.0.0/16 accept'"  # Pod network
-    ssh_exec "firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=10.43.0.0/16 accept'"  # Service network
+    # Allow pod-to-pod and service communication (K3s default CIDRs)
+    # NOTE: These CIDRs match K3s defaults. If using custom --cluster-cidr or --service-cidr, adjust accordingly.
+    ssh_exec "firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=10.42.0.0/16 accept'"  # Pod network (--cluster-cidr)
+    ssh_exec "firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=10.43.0.0/16 accept'"  # Service network (--service-cidr)
 
     ssh_exec "firewall-cmd --reload"
 
@@ -242,7 +247,14 @@ install_k3s() {
         exit 1
     fi
 
-    log_success "K3s installed and running"
+    log_success "K3s node is ready"
+
+    # Wait for core components (coredns, traefik) to be running
+    log_info "Waiting for core K3s components..."
+    ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/k3s kubectl wait --for=condition=ready pod -l k8s-app=kube-dns -n kube-system --timeout=120s"
+    ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/k3s kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=traefik -n kube-system --timeout=120s"
+
+    log_success "K3s core components ready"
     ssh_exec "/usr/local/bin/k3s kubectl get nodes"
 }
 
@@ -278,6 +290,9 @@ install_rancher() {
 
     local bootstrap_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
 
+    # Install Rancher with tls=external (TLS termination handled by Traefik ingress)
+    # WARNING: Rancher pods communicate internally via HTTP (port 80). Ensure network-level
+    # access controls are in place - only Traefik should reach Rancher pods directly.
     ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/helm install rancher rancher-stable/rancher --namespace cattle-system --set hostname='$RANCHER_HOSTNAME' --set replicas=1 --set bootstrapPassword='$bootstrap_password' --set tls=external --version $RANCHER_VERSION --wait --timeout 10m"
 
     ssh_exec "echo '$bootstrap_password' > /root/.rancher-bootstrap-password && chmod 600 /root/.rancher-bootstrap-password"
