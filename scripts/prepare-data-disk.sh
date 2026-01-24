@@ -3,11 +3,16 @@
 # Data Disk Preparation Script for K3s/Rancher
 # Target: SRV22 (srv22.mosca.lan)
 #
+# Prerequisites:
+#   - SSH key authentication configured (run setup-ssh-key.sh first)
+#   - Passwordless sudo configured for ssh_user
+#
 # Usage from macOS:
-#   ./prepare-data-disk.sh <server> <ssh_user> <ssh_password> <device> [size_gb]
+#   ./prepare-data-disk.sh <server> <ssh_user> [device] [size_gb]
 #
 # Example:
-#   ./prepare-data-disk.sh srv22.mosca.lan administrator 'password' /dev/sdb 50
+#   ./prepare-data-disk.sh srv22.mosca.lan administrator /dev/sdb 50
+#   ./prepare-data-disk.sh 192.168.11.130 administrator  # Auto-detect blank disk
 #
 # WARNING: This script will completely format the specified disk!
 #
@@ -24,9 +29,8 @@ NC='\033[0m'
 # Arguments
 SERVER="$1"
 SSH_USER="$2"
-SSH_PASSWORD="$3"
-DEVICE="$4"  # Optional: if not provided, auto-detect
-MIN_SIZE_GB="${5:-50}"
+DEVICE="$3"  # Optional: if not provided, auto-detect
+MIN_SIZE_GB="${4:-50}"
 
 MOUNT_POINT="/mnt/k3s"
 
@@ -48,54 +52,68 @@ log_error() {
 }
 
 usage() {
-    echo "Usage: $0 <server> <ssh_user> <ssh_password> [device] [size_gb]"
+    echo "Usage: $0 <server> <ssh_user> [device] [size_gb]"
     echo
     echo "Arguments:"
     echo "  server       - Target server hostname/IP (e.g., srv22.mosca.lan)"
     echo "  ssh_user     - SSH username (e.g., administrator)"
-    echo "  ssh_password - SSH password"
     echo "  device       - Block device (optional, auto-detected if not specified)"
     echo "  size_gb      - Minimum disk size in GB (default: 50)"
     echo
+    echo "Prerequisites:"
+    echo "  - SSH key authentication must be configured"
+    echo "  - Passwordless sudo must be configured for ssh_user"
+    echo "  - Run setup-ssh-key.sh first if not configured"
+    echo
     echo "Examples:"
     echo "  # Auto-detect blank disk:"
-    echo "  $0 srv22.mosca.lan administrator 'MyPass123'"
+    echo "  $0 srv22.mosca.lan administrator"
     echo
     echo "  # Specify device explicitly:"
-    echo "  $0 srv22.mosca.lan administrator 'MyPass123' /dev/sdb 50"
+    echo "  $0 192.168.11.130 administrator /dev/sdb 50"
     echo
     echo "Available devices on target server:"
-    if [ -n "$SERVER" ] && [ -n "$SSH_USER" ] && [ -n "$SSH_PASSWORD" ]; then
+    if [ -n "$SERVER" ] && [ -n "$SSH_USER" ]; then
         ssh_exec "lsblk -d -o NAME,SIZE,TYPE,MOUNTPOINT | grep -E 'disk|nvme'" 2>/dev/null || true
     fi
     exit 1
 }
 
 check_args() {
-    if [ -z "$SERVER" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PASSWORD" ]; then
+    if [ -z "$SERVER" ] || [ -z "$SSH_USER" ]; then
         log_error "Missing required arguments"
         usage
     fi
 }
 
 # Execute command on remote server via SSH
-# Uses pipe to avoid variable expansion issues with passwords containing special chars
+# Uses SSH key authentication and passwordless sudo
 ssh_exec() {
     local cmd="$1"
-    {
-        printf '%s\n' "$SSH_PASSWORD"
-        printf '%s\n' "$cmd"
-    } | sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-        "${SSH_USER}@${SERVER}" 'sudo -S bash' 2>&1
+    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+        "${SSH_USER}@${SERVER}" "sudo bash -c $(printf '%q' "$cmd")" 2>&1
 }
 
-# Check if sshpass is installed
-check_sshpass() {
-    if ! command -v sshpass &> /dev/null; then
-        log_error "sshpass is required but not installed"
-        log_info "Install with: brew install sshpass"
+# Check SSH connection and prerequisites
+check_ssh_prerequisites() {
+    # Test SSH connection
+    if ! ssh -o PasswordAuthentication=no -o ConnectTimeout=5 -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+        "${SSH_USER}@${SERVER}" 'echo "Connection OK"' &>/dev/null; then
+        log_error "Cannot connect to ${SSH_USER}@${SERVER}"
+        log_info "Please run setup-ssh-key.sh first to configure SSH key authentication"
         exit 1
     fi
+
+    # Test passwordless sudo
+    if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+        "${SSH_USER}@${SERVER}" 'sudo -n echo "Sudo OK"' &>/dev/null; then
+        log_error "Passwordless sudo not configured for ${SSH_USER}@${SERVER}"
+        log_info "Please run setup-ssh-key.sh first to configure passwordless sudo"
+        exit 1
+    fi
+
+    log_success "SSH and sudo prerequisites verified"
 }
 
 find_blank_disk() {
@@ -360,7 +378,7 @@ main() {
     echo
 
     check_args
-    check_sshpass
+    check_ssh_prerequisites
     find_blank_disk
     validate_device
     confirm_operation

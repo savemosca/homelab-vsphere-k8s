@@ -4,11 +4,16 @@
 # Target: SRV22 (srv22.mosca.lan)
 # Data disk: /mnt/k3s (50GB minimum recommended)
 #
+# Prerequisites:
+#   - SSH key authentication configured (run setup-ssh-key.sh first)
+#   - Passwordless sudo configured for ssh_user
+#
 # Usage from macOS:
-#   ./install-rancher-k3s.sh <server> <ssh_user> <ssh_password> [rancher_hostname]
+#   ./install-rancher-k3s.sh <server> <ssh_user> [rancher_hostname]
 #
 # Example:
-#   ./install-rancher-k3s.sh srv22.mosca.lan administrator 'password' rancher.savemosca.com
+#   ./install-rancher-k3s.sh srv22.mosca.lan administrator rancher.savemosca.com
+#   ./install-rancher-k3s.sh 192.168.11.130 administrator
 #
 # Installed versions:
 #   - K3s: v1.34.3+k3s1 (Kubernetes 1.34.3)
@@ -30,8 +35,7 @@ NC='\033[0m'
 # Arguments
 SERVER="$1"
 SSH_USER="$2"
-SSH_PASSWORD="$3"
-RANCHER_HOSTNAME="${4:-rancher.savemosca.com}"
+RANCHER_HOSTNAME="${3:-rancher.savemosca.com}"
 
 # Configuration
 K3S_DATA_DIR="/mnt/k3s"
@@ -58,44 +62,59 @@ log_error() {
 }
 
 usage() {
-    echo "Usage: $0 <server> <ssh_user> <ssh_password> [rancher_hostname]"
+    echo "Usage: $0 <server> <ssh_user> [rancher_hostname]"
     echo
     echo "Arguments:"
     echo "  server            - Target server hostname/IP (e.g., srv22.mosca.lan)"
     echo "  ssh_user          - SSH username (e.g., administrator)"
-    echo "  ssh_password      - SSH password"
     echo "  rancher_hostname  - Rancher FQDN (default: rancher.savemosca.com)"
     echo
+    echo "Prerequisites:"
+    echo "  - SSH key authentication must be configured"
+    echo "  - Passwordless sudo must be configured for ssh_user"
+    echo "  - Run setup-ssh-key.sh first if not configured"
+    echo
     echo "Example:"
-    echo "  $0 srv22.mosca.lan administrator 'MyPass123' rancher.savemosca.com"
+    echo "  $0 srv22.mosca.lan administrator rancher.savemosca.com"
+    echo "  $0 192.168.11.130 administrator"
     exit 1
 }
 
 check_args() {
-    if [ -z "$SERVER" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PASSWORD" ]; then
+    if [ -z "$SERVER" ] || [ -z "$SSH_USER" ]; then
         log_error "Missing required arguments"
         usage
     fi
 }
 
 # Execute command on remote server via SSH
-# Uses pipe to avoid variable expansion issues with passwords containing special chars
+# Uses SSH key authentication and passwordless sudo
 ssh_exec() {
     local cmd="$1"
-    {
-        printf '%s\n' "$SSH_PASSWORD"
-        printf '%s\n' "$cmd"
-    } | sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-        "${SSH_USER}@${SERVER}" 'sudo -S bash' 2>&1
+    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+        "${SSH_USER}@${SERVER}" "sudo bash -c $(printf '%q' "$cmd")" 2>&1
 }
 
-# Check if sshpass is installed
-check_sshpass() {
-    if ! command -v sshpass &> /dev/null; then
-        log_error "sshpass is required but not installed"
-        log_info "Install with: brew install sshpass"
+# Check SSH connection and prerequisites
+check_ssh_prerequisites() {
+    # Test SSH connection
+    if ! ssh -o PasswordAuthentication=no -o ConnectTimeout=5 -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+        "${SSH_USER}@${SERVER}" 'echo "Connection OK"' &>/dev/null; then
+        log_error "Cannot connect to ${SSH_USER}@${SERVER}"
+        log_info "Please run setup-ssh-key.sh first to configure SSH key authentication"
         exit 1
     fi
+
+    # Test passwordless sudo
+    if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+        "${SSH_USER}@${SERVER}" 'sudo -n echo "Sudo OK"' &>/dev/null; then
+        log_error "Passwordless sudo not configured for ${SSH_USER}@${SERVER}"
+        log_info "Please run setup-ssh-key.sh first to configure passwordless sudo"
+        exit 1
+    fi
+
+    log_success "SSH and sudo prerequisites verified"
 }
 
 check_remote_rhel() {
@@ -460,7 +479,7 @@ main() {
 
     # Prerequisites
     check_args
-    check_sshpass
+    check_ssh_prerequisites
 
     # Remote system checks
     check_remote_rhel
