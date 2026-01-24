@@ -112,20 +112,26 @@ cloudConfig: |
   # Script per aggiornamenti automatici periodici
   write_files:
     # Configura esplicitamente entrambe le NIC
+    # WORKAROUND: Rancher crea le NIC in ordine inverso (services prima di workload)
+    # Quindi ens160 = services (NO DHCP) e ens192 = workload (DHCP)
     - path: /etc/netplan/99-k8s-network.yaml
       content: |
         network:
           version: 2
           ethernets:
-            # NIC1 workload - DHCP con default route
+            # NIC1 (ens160) è fisicamente su services ma vogliamo sia optional
             ens160:
-              dhcp4: true
-              dhcp6: false
-            # NIC2 services - NO DHCP, configurata da MetalLB
-            ens192:
-              dhcp4: false
+              dhcp4: true  # Prova DHCP, ma fallirà (no DHCP su services)
               dhcp6: false
               optional: true
+              dhcp4-overrides:
+                use-routes: false  # Non usare route da questa NIC
+            # NIC2 (ens192) è fisicamente su workload con DHCP funzionante
+            ens192:
+              dhcp4: true
+              dhcp6: false
+              dhcp4-overrides:
+                use-routes: true  # Usa route da questa NIC
     
     - path: /etc/systemd/system/auto-update.service
       permissions: '0644'
