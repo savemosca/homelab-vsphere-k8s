@@ -79,14 +79,14 @@ check_args() {
 }
 
 # Execute command on remote server via SSH
-# Uses heredoc to avoid command injection and quoting issues
+# Uses pipe to avoid variable expansion issues with passwords containing special chars
 ssh_exec() {
     local cmd="$1"
-    sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-        "${SSH_USER}@${SERVER}" 'sudo -S bash -s' <<EOF 2>&1
-$SSH_PASSWORD
-$cmd
-EOF
+    {
+        printf '%s\n' "$SSH_PASSWORD"
+        printf '%s\n' "$cmd"
+    } | sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+        "${SSH_USER}@${SERVER}" 'sudo -S bash' 2>&1
 }
 
 # Check if sshpass is installed
@@ -212,15 +212,32 @@ configure_selinux() {
     log_info "SELinux status: $selinux_status"
 
     if [[ "$selinux_status" == *"Enforcing"* ]]; then
-        log_warning "SELinux is in Enforcing mode"
-        log_warning "If you encounter issues, consider switching to Permissive for troubleshooting"
+        log_info "SELinux is in Enforcing mode - will configure proper contexts"
     fi
+}
+
+configure_selinux_data_dir() {
+    local selinux_status=$(ssh_exec "getenforce 2>/dev/null || echo 'unknown'")
+
+    if [[ "$selinux_status" != *"Enforcing"* ]]; then
+        log_info "SELinux not enforcing - skipping context configuration"
+        return
+    fi
+
+    log_info "Configuring SELinux context for K3s data directory: $K3S_DATA_DIR"
+
+    # Apply container_var_lib_t context to K3s data directory
+    # This is critical for K3s to work on custom data directories with SELinux enforcing
+    ssh_exec "semanage fcontext -a -t container_var_lib_t '$K3S_DATA_DIR(/.*)?'"
+    ssh_exec "restorecon -R -v $K3S_DATA_DIR"
+
+    log_success "SELinux context applied to $K3S_DATA_DIR"
 }
 
 install_dependencies() {
     log_info "Installing dependencies..."
 
-    ssh_exec "dnf install -y curl wget tar jq container-selinux iptables conntrack-tools"
+    ssh_exec "dnf install -y curl wget tar jq container-selinux iptables conntrack-tools policycoreutils-python-utils"
 
     log_success "Dependencies installed"
 }
@@ -454,6 +471,7 @@ main() {
     configure_firewall
     configure_selinux
     install_dependencies
+    configure_selinux_data_dir
 
     # Install stack
     install_k3s

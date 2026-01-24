@@ -79,10 +79,14 @@ check_args() {
 }
 
 # Execute command on remote server via SSH
+# Uses pipe to avoid variable expansion issues with passwords containing special chars
 ssh_exec() {
     local cmd="$1"
-    sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-        "${SSH_USER}@${SERVER}" "sudo -S bash -c \"$cmd\" <<< '$SSH_PASSWORD'" 2>&1
+    {
+        printf '%s\n' "$SSH_PASSWORD"
+        printf '%s\n' "$cmd"
+    } | sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+        "${SSH_USER}@${SERVER}" 'sudo -S bash' 2>&1
 }
 
 # Check if sshpass is installed
@@ -295,6 +299,26 @@ set_permissions() {
     log_success "Permissions configured"
 }
 
+set_selinux_context() {
+    local selinux_status=$(ssh_exec "getenforce 2>/dev/null || echo 'unknown'")
+
+    if [[ "$selinux_status" != *"Enforcing"* ]]; then
+        log_info "SELinux not enforcing - skipping context configuration"
+        return
+    fi
+
+    log_info "Configuring SELinux context for K3s data directory..."
+
+    # Install policycoreutils-python-utils if not present (contains semanage)
+    ssh_exec "rpm -q policycoreutils-python-utils &>/dev/null || dnf install -y policycoreutils-python-utils"
+
+    # Apply container_var_lib_t context - required for K3s with SELinux enforcing
+    ssh_exec "semanage fcontext -a -t container_var_lib_t '$MOUNT_POINT(/.*)?'"
+    ssh_exec "restorecon -R -v $MOUNT_POINT"
+
+    log_success "SELinux context configured"
+}
+
 print_summary() {
     local disk_info=$(ssh_exec "df -h $MOUNT_POINT")
     local lsblk_info=$(ssh_exec "lsblk $DEVICE")
@@ -346,6 +370,7 @@ main() {
     mount_filesystem
     add_to_fstab
     set_permissions
+    set_selinux_context
 
     print_summary
 
