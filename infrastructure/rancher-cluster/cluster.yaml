@@ -23,8 +23,7 @@
 #   - VLAN 37 (net-k8s-services): MetalLB LoadBalancer IPs
 #
 # Template VM:
-#   - Flatcar Container Linux: Control Plane e Workers standard
-#   - Ubuntu 24.04 LTS: Solo GPU Workers (per driver NVIDIA GRID)
+#   - Ubuntu 24.04 LTS: Control Plane, Workers standard, e GPU Workers
 
 apiVersion: provisioning.cattle.io/v1
 kind: Cluster
@@ -74,7 +73,7 @@ spec:
     # Machine Pools
     machinePools:
       #=========================================================================
-      # CONTROL PLANE - Flatcar Container Linux
+      # CONTROL PLANE - Ubuntu 24.04 LTS
       #=========================================================================
       # - 1 nodo (single control plane per homelab)
       # - unhealthyNodeTimeout: 0m = NON ricreare automaticamente
@@ -95,7 +94,7 @@ spec:
           node-role.kubernetes.io/control-plane: "true"
 
       #=========================================================================
-      # WORKERS STANDARD - Photon OS 5.0
+      # WORKERS STANDARD - Ubuntu 24.04 LTS
       #=========================================================================
       # - 2 nodi
       # - unhealthyNodeTimeout: 5m
@@ -111,7 +110,7 @@ spec:
         machineOS: linux
         machineConfigRef:
           kind: VmwarevsphereConfig
-          name: homelab-worker-photon
+          name: homelab-worker-ubuntu
         labels:
           node.kubernetes.io/pool: workers
 

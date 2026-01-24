@@ -51,12 +51,11 @@ cloudConfig: |
     - nfs-common
 
 ---
-# Worker Standard - VMware Photon OS 5.0
-# Sistema operativo immutabile ottimizzato per container e cloud-init
+# Worker Standard - Ubuntu 24.04 LTS
 apiVersion: rke-machine-config.cattle.io/v1
 kind: VmwarevsphereConfig
 metadata:
-  name: homelab-worker-photon
+  name: homelab-worker-ubuntu
   namespace: fleet-default
 # vSphere connection
 vcenter: srv02.mosca.lan
@@ -75,9 +74,9 @@ network:
   - /DATACENTER01/network/net-k8s-workload
   - /DATACENTER01/network/net-k8s-services
 
-# VM template - Photon OS 5.0 dalla Content Library
+# VM template - Ubuntu 24.04 LTS dalla Content Library
 contentLibrary: cnt-lbr-k8s-esxi01
-cloneFrom: photon-5.0-ova
+cloneFrom: ubuntu-24.04-lts-cloudimg
 creationType: library
 
 # VM resources - Worker
@@ -85,8 +84,7 @@ cpuCount: "4"
 memorySize: "8192"
 diskSize: "80000"
 
-# Cloud-init config per Photon OS
-# Photon OS supporta nativamente cloud-init
+# Cloud-init config per Ubuntu
 cloudConfig: |
   #cloud-config
   # Aggiornamento completo al primo boot
@@ -95,10 +93,8 @@ cloudConfig: |
   package_reboot_if_required: true
   
   packages:
-    - tar
-    - gzip
     - open-iscsi
-    - nfs-utils
+    - nfs-common
   
   # Script per aggiornamenti automatici periodici
   write_files:
@@ -111,8 +107,9 @@ cloudConfig: |
         
         [Service]
         Type=oneshot
-        ExecStart=/usr/bin/tdnf -y update
-        ExecStartPost=/usr/bin/systemctl reboot
+        ExecStart=/usr/bin/apt-get update
+        ExecStart=/usr/bin/apt-get -y upgrade
+        # Reboot rimosso: drain manuale tramite Rancher per evitare impatti su workload
         
     - path: /etc/systemd/system/auto-update.timer
       permissions: '0644'
@@ -131,7 +128,7 @@ cloudConfig: |
   runcmd:
     # Abilita servizi storage
     - systemctl enable --now iscsid
-    - systemctl enable --now nfs-client.target
+    - systemctl enable --now nfs-common
     # Abilita aggiornamenti automatici settimanali
     - systemctl daemon-reload
     - systemctl enable --now auto-update.timer
@@ -187,7 +184,11 @@ cloudConfig: |
         network:
           version: 2
           ethernets:
-            ens192:
+            # Match seconda NIC in modo più robusto
+            # Accetta ens192, ens224, etc. (qualsiasi dopo ens160)
+            second-nic:
+              match:
+                name: \"ens[1-9]*\"
               dhcp4: true
               dhcp4-overrides:
                 use-routes: false
