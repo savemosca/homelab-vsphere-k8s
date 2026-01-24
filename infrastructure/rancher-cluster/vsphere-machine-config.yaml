@@ -17,39 +17,38 @@ kind: VmwarevsphereConfig
 metadata:
   name: homelab-control-plane
   namespace: fleet-default
-spec:
-  # vSphere connection
-  vcenter: srv02.mosca.lan
-  vcenterPort: "443"
+# vSphere connection
+vcenter: srv02.mosca.lan
+vcenterPort: "443"
 
-  # VM placement
-  datacenter: /DATACENTER01
-  datastore: /DATACENTER01/datastore/datastore02-local-raid
-  folder: /DATACENTER01/vm/Kubernetes VMs
-  pool: /DATACENTER01/host/CLUSTER01/Resources
+# VM placement
+datacenter: /DATACENTER01
+datastore: datastore02-local-raid
+folder: /DATACENTER01/vm/Kubernetes VMs/k8s-data-plane
+pool: /DATACENTER01/host/CLUSTER01/Resources
 
-  # Network - Control Plane su management network
-  network:
-    - /DATACENTER01/network/net-k8s-management
+# Network - Control Plane su management network
+network:
+  - /DATACENTER01/network/net-k8s-management
 
-  # VM template - Ubuntu 24.04 LTS dalla Content Library
-  contentLibrary: cnt-lbr-k8s-esxi01
-  cloneFrom: ubuntu-24.04-lts-cloudimg
-  creationType: library
+# VM template - Ubuntu 24.04 LTS dalla Content Library
+contentLibrary: cnt-lbr-k8s-esxi01
+cloneFrom: ubuntu-24.04-lts-cloudimg
+creationType: library
 
-  # VM resources - Control Plane
-  cpuCount: "4"
-  memorySize: "8192"
-  diskSize: "50000"
+# VM resources - Control Plane
+cpuCount: "4"
+memorySize: "8192"
+diskSize: "50000"
 
-  # Cloud-init
-  cloudConfig: |
-    #cloud-config
-    package_update: true
-    packages:
-      - curl
-      - open-iscsi
-      - nfs-common
+# Cloud-init
+cloudConfig: |
+  #cloud-config
+  package_update: true
+  packages:
+    - curl
+    - open-iscsi
+    - nfs-common
 
 ---
 # Worker Standard - Flatcar Container Linux (Stable)
@@ -58,39 +57,38 @@ kind: VmwarevsphereConfig
 metadata:
   name: homelab-worker-flatcar
   namespace: fleet-default
-spec:
-  # vSphere connection
-  vcenter: srv02.mosca.lan
-  vcenterPort: "443"
+# vSphere connection
+vcenter: srv02.mosca.lan
+vcenterPort: "443"
 
-  # VM placement
-  datacenter: /DATACENTER01
-  datastore: /DATACENTER01/datastore/datastore02-local-raid
-  folder: /DATACENTER01/vm/Kubernetes VMs
-  pool: /DATACENTER01/host/CLUSTER01/Resources
+# VM placement
+datacenter: /DATACENTER01
+datastore: datastore02-local-raid
+folder: /DATACENTER01/vm/Kubernetes VMs/k8s-workers
+pool: /DATACENTER01/host/CLUSTER01/Resources
 
-  # Network - Dual NIC:
-  #   NIC1: net-k8s-workload (VLAN 36) - Pod traffic, node communication
-  #   NIC2: net-k8s-services (VLAN 37) - MetalLB LoadBalancer IPs
-  network:
-    - /DATACENTER01/network/net-k8s-workload
-    - /DATACENTER01/network/net-k8s-services
+# Network - Dual NIC:
+#   NIC1: net-k8s-workload (VLAN 36) - Pod traffic, node communication
+#   NIC2: net-k8s-services (VLAN 37) - MetalLB LoadBalancer IPs
+network:
+  - /DATACENTER01/network/net-k8s-workload
+  - /DATACENTER01/network/net-k8s-services
 
-  # VM template - Flatcar Stable dalla Content Library
-  # Versione importata: 4459.2.2 (Stable channel)
-  contentLibrary: cnt-lbr-k8s-esxi01
-  cloneFrom: flatcar-stable-4459.2.2
-  creationType: library
+# VM template - Flatcar Stable dalla Content Library
+# Versione importata: 4459.2.2 (Stable channel)
+contentLibrary: cnt-lbr-k8s-esxi01
+cloneFrom: flatcar-stable-4459.2.2
+creationType: library
 
-  # VM resources - Worker
-  cpuCount: "4"
-  memorySize: "8192"
-  diskSize: "80000"
+# VM resources - Worker
+cpuCount: "4"
+memorySize: "8192"
+diskSize: "80000"
 
-  # Flatcar Ignition config (base64 encoded)
-  # Flatcar usa Ignition, non cloud-init
-  # La configurazione viene passata via guestinfo
-  cloudConfig: ""
+# Flatcar Ignition config (base64 encoded)
+# Flatcar usa Ignition, non cloud-init
+# La configurazione viene passata via guestinfo
+cloudConfig: ""
 
 ---
 # Worker GPU - Ubuntu 24.04 LTS con NVIDIA
@@ -99,107 +97,106 @@ kind: VmwarevsphereConfig
 metadata:
   name: homelab-worker-gpu
   namespace: fleet-default
-spec:
-  # vSphere connection
-  vcenter: srv02.mosca.lan
-  vcenterPort: "443"
+# vSphere connection
+vcenter: srv02.mosca.lan
+vcenterPort: "443"
 
-  # VM placement
-  datacenter: /DATACENTER01
-  datastore: /DATACENTER01/datastore/datastore02-local-raid
-  folder: /DATACENTER01/vm/Kubernetes VMs
-  pool: /DATACENTER01/host/CLUSTER01/Resources
+# VM placement
+datacenter: /DATACENTER01
+datastore: datastore02-local-raid
+folder: /DATACENTER01/vm/Kubernetes VMs/k8s-workers
+pool: /DATACENTER01/host/CLUSTER01/Resources
 
-  # Network - Dual NIC (come worker standard)
-  network:
-    - /DATACENTER01/network/net-k8s-workload
-    - /DATACENTER01/network/net-k8s-services
+# Network - Dual NIC (come worker standard)
+network:
+  - /DATACENTER01/network/net-k8s-workload
+  - /DATACENTER01/network/net-k8s-services
 
-  # VM template - Ubuntu 24.04 LTS dalla Content Library
-  contentLibrary: cnt-lbr-k8s-esxi01
-  cloneFrom: ubuntu-24.04-lts-cloudimg
-  creationType: library
+# VM template - Ubuntu 24.04 LTS dalla Content Library
+contentLibrary: cnt-lbr-k8s-esxi01
+cloneFrom: ubuntu-24.04-lts-cloudimg
+creationType: library
 
-  # VM resources - GPU Worker (più risorse)
-  cpuCount: "8"
-  memorySize: "32768"
-  diskSize: "100000"
+# VM resources - GPU Worker (più risorse)
+cpuCount: "8"
+memorySize: "32768"
+diskSize: "100000"
 
-  # Cloud-init con NVIDIA driver setup
-  cloudConfig: |
-    #cloud-config
-    package_update: true
-    package_upgrade: true
-    packages:
-      - curl
-      - gnupg
-      - ca-certificates
-      - open-iscsi
-      - nfs-common
+# Cloud-init con NVIDIA driver setup
+cloudConfig: |
+  #cloud-config
+  package_update: true
+  package_upgrade: true
+  packages:
+    - curl
+    - gnupg
+    - ca-certificates
+    - open-iscsi
+    - nfs-common
 
-    # Configura seconda NIC per VLAN 37 (services)
-    write_files:
-      - path: /etc/netplan/60-k8s-services.yaml
-        content: |
-          network:
-            version: 2
-            ethernets:
-              ens192:
-                dhcp4: true
-                dhcp4-overrides:
-                  use-routes: false
-                  use-dns: false
+  # Configura seconda NIC per VLAN 37 (services)
+  write_files:
+    - path: /etc/netplan/60-k8s-services.yaml
+      content: |
+        network:
+          version: 2
+          ethernets:
+            ens192:
+              dhcp4: true
+              dhcp4-overrides:
+                use-routes: false
+                use-dns: false
 
-      - path: /usr/local/bin/configure-nvidia-containerd.sh
-        permissions: '0755'
-        content: |
-          #!/bin/bash
-          set -e
-          until [ -f /var/lib/rancher/rke2/agent/etc/containerd/config.toml ]; do
-            sleep 10
-          done
-          nvidia-ctk runtime configure --runtime=containerd \
-            --config=/var/lib/rancher/rke2/agent/etc/containerd/config.toml
-          systemctl restart rke2-agent || true
+    - path: /usr/local/bin/configure-nvidia-containerd.sh
+      permissions: '0755'
+      content: |
+        #!/bin/bash
+        set -e
+        until [ -f /var/lib/rancher/rke2/agent/etc/containerd/config.toml ]; do
+          sleep 10
+        done
+        nvidia-ctk runtime configure --runtime=containerd \
+          --config=/var/lib/rancher/rke2/agent/etc/containerd/config.toml
+        systemctl restart rke2-agent || true
 
-      - path: /etc/systemd/system/nvidia-containerd-config.service
-        content: |
-          [Unit]
-          Description=Configure NVIDIA runtime for RKE2 containerd
-          After=rke2-agent.service
-          Wants=rke2-agent.service
+    - path: /etc/systemd/system/nvidia-containerd-config.service
+      content: |
+        [Unit]
+        Description=Configure NVIDIA runtime for RKE2 containerd
+        After=rke2-agent.service
+        Wants=rke2-agent.service
 
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/local/bin/configure-nvidia-containerd.sh
-          RemainAfterExit=yes
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/configure-nvidia-containerd.sh
+        RemainAfterExit=yes
 
-          [Install]
-          WantedBy=multi-user.target
+        [Install]
+        WantedBy=multi-user.target
 
-    runcmd:
-      # Applica netplan per seconda NIC
-      - netplan apply
+  runcmd:
+    # Applica netplan per seconda NIC
+    - netplan apply
 
-      # Installa NVIDIA Driver se GPU presente
-      - |
-        if lspci | grep -i nvidia; then
-          echo "NVIDIA GPU detected, installing drivers..."
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            nvidia-driver-550-server \
-            nvidia-utils-550-server
+    # Installa NVIDIA Driver se GPU presente
+    - |
+      if lspci | grep -i nvidia; then
+        echo "NVIDIA GPU detected, installing drivers..."
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y \
+          nvidia-driver-550-server \
+          nvidia-utils-550-server
 
-          # NVIDIA Container Toolkit
-          curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
-            gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-          curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-            sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-            tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-          apt-get update
-          apt-get install -y nvidia-container-toolkit
+        # NVIDIA Container Toolkit
+        curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+          gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+        curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+          sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+          tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+        apt-get update
+        apt-get install -y nvidia-container-toolkit
 
-          # Abilita servizio per configurare containerd dopo RKE2
-          systemctl daemon-reload
-          systemctl enable nvidia-containerd-config.service
-        fi
+        # Abilita servizio per configurare containerd dopo RKE2
+        systemctl daemon-reload
+        systemctl enable nvidia-containerd-config.service
+      fi

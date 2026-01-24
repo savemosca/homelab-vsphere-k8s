@@ -34,8 +34,8 @@ metadata:
   annotations:
     field.cattle.io/description: "Homelab Kubernetes workload cluster on vSphere"
 spec:
-  # Cloud credential creata su Rancher (vSphere administrator@vsphere.local)
-  cloudCredentialSecretName: cattle-global-data:cc-mfbmp
+  # Cloud credential reference - usa il secret vsphere-credentials
+  cloudCredentialSecretName: cattle-global-data:vsphere-credentials
 
   # Kubernetes version - RKE2
   kubernetesVersion: v1.34.2+rke2r1
@@ -111,7 +111,7 @@ spec:
         machineOS: linux
         machineConfigRef:
           kind: VmwarevsphereConfig
-          name: homelab-workers
+          name: homelab-worker-flatcar
         labels:
           node.kubernetes.io/pool: workers
 
@@ -133,7 +133,7 @@ spec:
         machineOS: linux
         machineConfigRef:
           kind: VmwarevsphereConfig
-          name: homelab-gpu-workers
+          name: homelab-worker-gpu
         labels:
           node.kubernetes.io/pool: gpu-workers
           nvidia.com/gpu: "present"
@@ -163,101 +163,3 @@ spec:
         gracePeriod: 30
         timeout: 300
 
----
-#=============================================================================
-# VmwarevsphereConfig - Control Plane (Flatcar)
-#=============================================================================
-apiVersion: rke-machine-config.cattle.io/v1
-kind: VmwarevsphereConfig
-metadata:
-  name: homelab-control-plane
-  namespace: fleet-default
-# VM Specs
-cpuCount: "4"
-memorySize: "8192"
-diskSize: "51200"
-# vSphere Location
-datacenter: /DATACENTER01
-datastore: /DATACENTER01/datastore/datastore02-local-raid
-folder: /DATACENTER01/vm/Kubernetes VMs/k8s-data-plane
-pool: /DATACENTER01/host/CLUSTER01/Resources
-# Network - Solo VLAN 35 (management)
-network:
-  - /DATACENTER01/network/net-k8s-management
-# Template - Flatcar dalla Content Library
-creationType: library
-contentLibrary: cnt-lbr-k8s-esxi01
-cloneFrom: flatcar-stable-4459.2.2
-# Flatcar usa Ignition, non cloud-init
-cloudConfig: ""
-
----
-#=============================================================================
-# VmwarevsphereConfig - Workers Standard (Flatcar)
-#=============================================================================
-apiVersion: rke-machine-config.cattle.io/v1
-kind: VmwarevsphereConfig
-metadata:
-  name: homelab-workers
-  namespace: fleet-default
-# VM Specs
-cpuCount: "4"
-memorySize: "8192"
-diskSize: "81920"
-# vSphere Location
-datacenter: /DATACENTER01
-datastore: /DATACENTER01/datastore/datastore02-local-raid
-folder: /DATACENTER01/vm/Kubernetes VMs/k8s-workers
-pool: /DATACENTER01/host/CLUSTER01/Resources
-# Networks - VLAN 36 (workload) + VLAN 37 (services/MetalLB)
-network:
-  - /DATACENTER01/network/net-k8s-workload
-  - /DATACENTER01/network/net-k8s-services
-# Template - Flatcar dalla Content Library
-creationType: library
-contentLibrary: cnt-lbr-k8s-esxi01
-cloneFrom: flatcar-stable-4459.2.2
-# Flatcar usa Ignition, non cloud-init
-cloudConfig: ""
-
----
-#=============================================================================
-# VmwarevsphereConfig - GPU Workers (Ubuntu 24.04 LTS)
-#=============================================================================
-# Ubuntu è necessario per i driver NVIDIA GRID (vGPU)
-# Il cloud-init installa automaticamente i driver al primo boot
-apiVersion: rke-machine-config.cattle.io/v1
-kind: VmwarevsphereConfig
-metadata:
-  name: homelab-gpu-workers
-  namespace: fleet-default
-# VM Specs - Più risorse per workload GPU
-cpuCount: "8"
-memorySize: "32768"
-diskSize: "102400"
-# vSphere Location
-datacenter: /DATACENTER01
-datastore: /DATACENTER01/datastore/datastore02-local-raid
-folder: /DATACENTER01/vm/Kubernetes VMs/k8s-workers
-pool: /DATACENTER01/host/CLUSTER01/Resources
-# Networks - VLAN 36 + VLAN 37
-network:
-  - /DATACENTER01/network/net-k8s-workload
-  - /DATACENTER01/network/net-k8s-services
-# Template - Ubuntu dalla Content Library
-creationType: library
-contentLibrary: cnt-lbr-k8s-esxi01
-cloneFrom: ubuntu-24.04-lts-cloudimg
-# Cloud-init per setup NVIDIA
-# Nota: i driver GRID vengono installati da gpu-worker-cloud-init.yaml
-cloudConfig: |
-  #cloud-config
-  package_update: true
-  package_upgrade: true
-  packages:
-    - curl
-    - gnupg
-    - ca-certificates
-    - open-iscsi
-    - nfs-common
-    - cifs-utils
