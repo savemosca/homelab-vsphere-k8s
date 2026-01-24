@@ -17,6 +17,7 @@
 #
 # Installed versions:
 #   - K3s: v1.34.3+k3s1 (Kubernetes 1.34.3)
+#   - Traefik: bundled with K3s
 #   - Rancher: v2.13.1
 #   - cert-manager: v1.19.2
 #   - Helm: v4.1.0
@@ -43,6 +44,8 @@ K3S_VERSION="v1.34.3+k3s1"
 RANCHER_VERSION="2.13.1"
 CERT_MANAGER_VERSION="v1.19.2"
 HELM_VERSION="v4.1.0"
+TRAEFIK_VERSION="3.6.7"
+TRAEFIK_CHART_VERSION="39.0.0"
 
 # Utility functions
 log_info() {
@@ -264,7 +267,9 @@ install_dependencies() {
 install_k3s() {
     log_info "Installing K3s $K3S_VERSION with data dir: $K3S_DATA_DIR..."
 
-    ssh_exec "curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION='$K3S_VERSION' INSTALL_K3S_EXEC='server --data-dir=$K3S_DATA_DIR' sh -"
+    # Disable network policy controller to avoid conflicts (K3s best practice)
+    # Reference: https://docs.k3s.io/networking/basic-network-options
+    ssh_exec "curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION='$K3S_VERSION' INSTALL_K3S_EXEC='server --data-dir=$K3S_DATA_DIR --disable-network-policy' sh -"
 
     log_info "Waiting for K3s to be ready..."
     local max_wait=60
@@ -287,8 +292,33 @@ install_k3s() {
 
     # Wait for core components (coredns, traefik) to be running
     log_info "Waiting for core K3s components..."
-    ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/k3s kubectl wait --for=condition=ready pod -l k8s-app=kube-dns -n kube-system --timeout=120s"
-    ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/k3s kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=traefik -n kube-system --timeout=120s"
+
+    # Wait for coredns pod to exist, then for it to be ready
+    local max_wait=120
+    local count=0
+    while [ $count -lt $max_wait ]; do
+        local coredns_exists=$(ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/k3s kubectl get pod -l k8s-app=kube-dns -n kube-system --no-headers 2>/dev/null | wc -l")
+        coredns_exists=$(echo "$coredns_exists" | tr -d '[:space:]')
+        if [ "$coredns_exists" -gt 0 ]; then
+            log_info "CoreDNS pod found, waiting for ready status..."
+            ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/k3s kubectl wait --for=condition=ready pod -l k8s-app=kube-dns -n kube-system --timeout=60s" && break
+        fi
+        sleep 2
+        count=$((count + 2))
+    done
+
+    # Wait for traefik pod to exist, then for it to be ready
+    count=0
+    while [ $count -lt $max_wait ]; do
+        local traefik_exists=$(ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/k3s kubectl get pod -l app.kubernetes.io/name=traefik -n kube-system --no-headers 2>/dev/null | wc -l")
+        traefik_exists=$(echo "$traefik_exists" | tr -d '[:space:]')
+        if [ "$traefik_exists" -gt 0 ]; then
+            log_info "Traefik pod found, waiting for ready status..."
+            ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/k3s kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=traefik -n kube-system --timeout=60s" && break
+        fi
+        sleep 2
+        count=$((count + 2))
+    done
 
     log_success "K3s core components ready"
     ssh_exec "/usr/local/bin/k3s kubectl get nodes"
@@ -301,6 +331,55 @@ install_helm() {
 
     local helm_version=$(ssh_exec "/usr/local/bin/helm version --short")
     log_success "Helm installed: $helm_version"
+}
+
+upgrade_traefik() {
+    log_info "Upgrading Traefik to v$TRAEFIK_VERSION (required for Kubernetes 1.34)..."
+
+    # Add Traefik Helm repository
+    ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/helm repo add traefik https://traefik.github.io/charts"
+    ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/helm repo update"
+
+    # Create Traefik values file on remote server
+    ssh_exec "cat > /tmp/traefik-values.yaml <<'EOF'
+deployment:
+  podAnnotations:
+    prometheus.io/port: \"8082\"
+    prometheus.io/scrape: \"true\"
+global:
+  systemDefaultRegistry: \"\"
+image:
+  repository: rancher/mirrored-library-traefik
+  tag: \"$TRAEFIK_VERSION\"
+priorityClassName: system-cluster-critical
+providers:
+  kubernetesIngress:
+    publishedService:
+      enabled: true
+service:
+  ipFamilyPolicy: PreferDualStack
+tolerations:
+- key: CriticalAddonsOnly
+  operator: Exists
+- effect: NoSchedule
+  key: node-role.kubernetes.io/control-plane
+  operator: Exists
+EOF
+"
+
+    # Upgrade Traefik using Helm
+    ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/helm upgrade traefik traefik/traefik --version $TRAEFIK_CHART_VERSION --namespace kube-system -f /tmp/traefik-values.yaml --wait --timeout 5m"
+
+    # Wait for Traefik to be ready
+    log_info "Waiting for Traefik to be ready after upgrade..."
+    ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/k3s kubectl -n kube-system rollout status deployment/traefik --timeout=300s"
+
+    # Verify Traefik version
+    local traefik_version=$(ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/k3s kubectl get deployment traefik -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}'" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+    log_success "Traefik upgraded to v$traefik_version"
+
+    # Clean up values file
+    ssh_exec "rm -f /tmp/traefik-values.yaml"
 }
 
 install_cert_manager() {
@@ -339,9 +418,6 @@ install_rancher() {
     ssh_exec "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && /usr/local/bin/k3s kubectl -n cattle-system wait --for=condition=ready pod -l app=rancher --timeout=600s"
 
     log_success "Rancher is ready!"
-
-    # Apply network policy to restrict access to Rancher pods
-    apply_rancher_network_policy
 
     echo
     echo "=================================================="
