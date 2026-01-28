@@ -87,10 +87,10 @@ datastore: datastore02-local-raid
 folder: /DATACENTER01/vm/Kubernetes VMs/k8s-workers
 pool: /DATACENTER01/host/CLUSTER01/Resources
 
-# Network - Dual NIC (ordine invertito per mapping più intuitivo):
+# Network - Dual NIC (workload deve essere NIC1 dentro alla VM)
 #   NIC1 (ens192): net-k8s-workload (VLAN 36) - DHCP attivo, default route
-#   NIC2 (ens224): net-k8s-services (VLAN 37) - NO DHCP (MetalLB LoadBalancer IPs, L2-only)
-# IMPORTANTE: Ubuntu enumera VMware NICs come ens192 (adapter 1) e ens224 (adapter 2)
+#   NIC2 (ens224): net-k8s-services (VLAN 37) - NO DHCP (MetalLB L2-only)
+# Nota: abbiamo messo il portgroup workload per primo così vSphere lo crea come adapter 1
 network:
   - /DATACENTER01/network/net-k8s-workload
   - /DATACENTER01/network/net-k8s-services
@@ -125,11 +125,18 @@ cloudConfig: |
     - nfs-common
     - open-vm-tools
   
-  # Script per aggiornamenti automatici periodici
+  # Script per aggiornamenti automatici periodici e hardening IPv6
   write_files:
-    # Configura entrambe le NIC con DHCP - quella con server risponderà
-    # ens192: net-k8s-workload (VLAN 36, DHCP attivo) - ottiene IP e default route
-    # ens224: net-k8s-services (VLAN 37, NO DHCP) - rimane L2-only per MetalLB
+    # Disabilita IPv6 via sysctl.d (coerente con control plane)
+    - path: /etc/sysctl.d/99-disable-ipv6.conf
+      content: |
+        net.ipv6.conf.all.disable_ipv6 = 1
+        net.ipv6.conf.default.disable_ipv6 = 1
+        net.ipv6.conf.lo.disable_ipv6 = 1
+
+    # Configura esplicitamente le NIC: workload con DHCP, services senza DHCP
+    # ens192: net-k8s-workload (VLAN 36, DHCP attivo) - IP + default route
+    # ens224: net-k8s-services (VLAN 37, NO DHCP) - L2-only per MetalLB
     - path: /etc/netplan/99-k8s-network.yaml
       permissions: '0600'
       owner: root:root
@@ -137,17 +144,16 @@ cloudConfig: |
         network:
           version: 2
           ethernets:
-            # Configura tutte le interfacce ethernet con DHCP
-            # Ubuntu enumera le NIC come ens192 (prima) e ens224 (seconda)
-            # La NIC con DHCP server disponibile si attiverà automaticamente
             ens192:
               dhcp4: true
               dhcp6: false
-              optional: true  # Non bloccare boot se DHCP fallisce
+              optional: true  # Evita blocco se DHCP è lento
+              dhcp4-overrides:
+                use-routes: true
             ens224:
-              dhcp4: true
+              dhcp4: false
               dhcp6: false
-              optional: true  # Non bloccare boot se DHCP fallisce
+              optional: true  # L2-only, gestito da MetalLB
     
     - path: /etc/systemd/system/auto-update.service
       permissions: '0644'
@@ -177,6 +183,8 @@ cloudConfig: |
         WantedBy=timers.target
   
   runcmd:
+    # Applica sysctl per disabilitare IPv6
+    - sysctl -p /etc/sysctl.d/99-disable-ipv6.conf
     # Applica configurazione rete
     - netplan apply
     # Abilita servizi storage
@@ -203,9 +211,9 @@ datastore: datastore02-local-raid
 folder: /DATACENTER01/vm/Kubernetes VMs/k8s-workers
 pool: /DATACENTER01/host/CLUSTER01/Resources
 
-# Network - Dual NIC (stesso setup dei worker standard):
+# Network - Dual NIC (stesso setup dei worker standard, workload come NIC1)
 #   NIC1 (ens192): net-k8s-workload (VLAN 36) - DHCP attivo, default route
-#   NIC2 (ens224): net-k8s-services (VLAN 37) - NO DHCP (MetalLB LoadBalancer IPs, L2-only)
+#   NIC2 (ens224): net-k8s-services (VLAN 37) - NO DHCP (MetalLB L2-only)
 network:
   - /DATACENTER01/network/net-k8s-workload
   - /DATACENTER01/network/net-k8s-services
@@ -247,9 +255,9 @@ cloudConfig: |
     - open-iscsi
     - nfs-common
 
-  # Configura entrambe le NIC con DHCP - quella con server risponderà
-  # ens192: net-k8s-workload (VLAN 36, DHCP attivo) - ottiene IP e default route
-  # ens224: net-k8s-services (VLAN 37, NO DHCP) - rimane L2-only per MetalLB
+  # Configura esplicitamente le NIC: workload con DHCP, services senza DHCP
+  # ens192: net-k8s-workload (VLAN 36, DHCP attivo) - IP + default route
+  # ens224: net-k8s-services (VLAN 37, NO DHCP) - L2-only per MetalLB
   write_files:
     - path: /etc/netplan/99-k8s-network.yaml
       permissions: '0600'
@@ -258,17 +266,16 @@ cloudConfig: |
         network:
           version: 2
           ethernets:
-            # Configura tutte le interfacce ethernet con DHCP
-            # Ubuntu enumera le NIC come ens192 (prima) e ens224 (seconda)
-            # La NIC con DHCP server disponibile si attiverà automaticamente
             ens192:
               dhcp4: true
               dhcp6: false
-              optional: true  # Non bloccare boot se DHCP fallisce
+              optional: true
+              dhcp4-overrides:
+                use-routes: true
             ens224:
-              dhcp4: true
+              dhcp4: false
               dhcp6: false
-              optional: true  # Non bloccare boot se DHCP fallisce
+              optional: true  # L2-only, gestito da MetalLB
 
     - path: /usr/local/bin/configure-nvidia-containerd.sh
       permissions: '0755'
