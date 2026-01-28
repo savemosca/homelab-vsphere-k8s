@@ -45,7 +45,15 @@ diskSize: "50000"
 cloudConfig: |
   #cloud-config
   package_update: true
-  
+
+  # Utente debug per troubleshooting (password: rancher123)
+  users:
+    - name: debug
+      sudo: ALL=(ALL) NOPASSWD:ALL
+      shell: /bin/bash
+      lock_passwd: false
+      passwd: $6$3JJhNHhde4UXaOZu$KFrFSHS9fMUYVxtHGr.J62cwbpU.St229Jh8CrFa7rg3iSL2lpFRWI1P7KbTLQ7AogYj2/U5JazYkYwDfKGmb/
+
   # Disabilita IPv6 permanentemente via sysctl.d
   write_files:
     - path: /etc/sysctl.d/99-disable-ipv6.conf
@@ -103,7 +111,15 @@ cloudConfig: |
   # NON fare upgrade al primo boot per evitare reboot prima di netplan apply
   package_update: false
   package_upgrade: false
-  
+
+  # Utente debug per troubleshooting (password: rancher123)
+  users:
+    - name: debug
+      sudo: ALL=(ALL) NOPASSWD:ALL
+      shell: /bin/bash
+      lock_passwd: false
+      passwd: $6$3JJhNHhde4UXaOZu$KFrFSHS9fMUYVxtHGr.J62cwbpU.St229Jh8CrFa7rg3iSL2lpFRWI1P7KbTLQ7AogYj2/U5JazYkYwDfKGmb/
+
   packages:
     - open-iscsi
     - nfs-common
@@ -206,7 +222,15 @@ cloudConfig: |
   #cloud-config
   package_update: true
   package_upgrade: true
-  
+
+  # Utente debug per troubleshooting (password: rancher123)
+  users:
+    - name: debug
+      sudo: ALL=(ALL) NOPASSWD:ALL
+      shell: /bin/bash
+      lock_passwd: false
+      passwd: $6$3JJhNHhde4UXaOZu$KFrFSHS9fMUYVxtHGr.J62cwbpU.St229Jh8CrFa7rg3iSL2lpFRWI1P7KbTLQ7AogYj2/U5JazYkYwDfKGmb/
+
   # Disabilita IPv6 per evitare problemi con VMware Tools e DHCP
   bootcmd:
     - echo "net.ipv6.conf.all.disable_ipv6 = 1" >> /etc/sysctl.conf
