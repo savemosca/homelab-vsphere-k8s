@@ -111,27 +111,25 @@ cloudConfig: |
   
   # Script per aggiornamenti automatici periodici
   write_files:
-    # Configura esplicitamente entrambe le NIC
-    # WORKAROUND: Rancher crea le NIC in ordine inverso (services prima di workload)
-    # Quindi ens160 = services (NO DHCP) e ens192 = workload (DHCP)
+    # Configura entrambe le NIC in modo identico - DHCP deciderà quale si attiva
+    # Una NIC è su net-k8s-services (VLAN 37, NO DHCP) - rimane L2-only per MetalLB
+    # L'altra è su net-k8s-workload (VLAN 36, DHCP attivo) - ottiene IP e default route
+    # Non sappiamo a priori quale interfaccia (ens160/ens192) mappa a quale VLAN
     - path: /etc/netplan/99-k8s-network.yaml
       content: |
         network:
           version: 2
           ethernets:
-            # NIC1 (ens160) è fisicamente su services ma vogliamo sia optional
+            # Configura tutte le interfacce ethernet con DHCP
+            # La NIC con DHCP server disponibile si attiverà automaticamente
             ens160:
-              dhcp4: true  # Prova DHCP, ma fallirà (no DHCP su services)
+              dhcp4: true
               dhcp6: false
-              optional: true
-              dhcp4-overrides:
-                use-routes: false  # Non usare route da questa NIC
-            # NIC2 (ens192) è fisicamente su workload con DHCP funzionante
+              optional: true  # Non bloccare boot se DHCP fallisce
             ens192:
               dhcp4: true
               dhcp6: false
-              dhcp4-overrides:
-                use-routes: true  # Usa route da questa NIC
+              optional: true  # Non bloccare boot se DHCP fallisce
     
     - path: /etc/systemd/system/auto-update.service
       permissions: '0644'
@@ -222,24 +220,25 @@ cloudConfig: |
     - open-iscsi
     - nfs-common
 
-  # Configura seconda NIC per VLAN 37 (services)
+  # Configura entrambe le NIC in modo identico - DHCP deciderà quale si attiva
+  # Una NIC è su net-k8s-services (VLAN 37, NO DHCP) - rimane L2-only per MetalLB
+  # L'altra è su net-k8s-workload (VLAN 36, DHCP attivo) - ottiene IP e default route
   write_files:
-    - path: /etc/netplan/60-k8s-services.yaml
+    - path: /etc/netplan/99-k8s-network.yaml
       content: |
         network:
           version: 2
           ethernets:
-            # NIC1 workload - DHCP con default route
+            # Configura tutte le interfacce ethernet con DHCP
+            # La NIC con DHCP server disponibile si attiverà automaticamente
             ens160:
               dhcp4: true
               dhcp6: false
-            # NIC2 services - DHCP ma senza route/DNS (per MetalLB)
+              optional: true  # Non bloccare boot se DHCP fallisce
             ens192:
               dhcp4: true
               dhcp6: false
-              dhcp4-overrides:
-                use-routes: false
-                use-dns: false
+              optional: true  # Non bloccare boot se DHCP fallisce
 
     - path: /usr/local/bin/configure-nvidia-containerd.sh
       permissions: '0755'
