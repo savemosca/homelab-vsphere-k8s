@@ -137,12 +137,13 @@ cloudConfig: |
           version: 2
           ethernets:
             # Configura tutte le interfacce ethernet con DHCP
+            # Ubuntu enumera le NIC come ens192 (prima) e ens224 (seconda)
             # La NIC con DHCP server disponibile si attiverà automaticamente
-            ens160:
+            ens192:
               dhcp4: true
               dhcp6: false
               optional: true  # Non bloccare boot se DHCP fallisce
-            ens192:
+            ens224:
               dhcp4: true
               dhcp6: false
               optional: true  # Non bloccare boot se DHCP fallisce
@@ -254,12 +255,13 @@ cloudConfig: |
           version: 2
           ethernets:
             # Configura tutte le interfacce ethernet con DHCP
+            # Ubuntu enumera le NIC come ens192 (prima) e ens224 (seconda)
             # La NIC con DHCP server disponibile si attiverà automaticamente
-            ens160:
+            ens192:
               dhcp4: true
               dhcp6: false
               optional: true  # Non bloccare boot se DHCP fallisce
-            ens192:
+            ens224:
               dhcp4: true
               dhcp6: false
               optional: true  # Non bloccare boot se DHCP fallisce
