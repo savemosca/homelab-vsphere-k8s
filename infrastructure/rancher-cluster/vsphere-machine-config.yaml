@@ -88,9 +88,9 @@ folder: /DATACENTER01/vm/Kubernetes VMs/k8s-workers
 pool: /DATACENTER01/host/CLUSTER01/Resources
 
 # Network - Dual NIC:
-#   NIC1 (ens160): net-k8s-services (VLAN 37) - NO DHCP (MetalLB LoadBalancer IPs)
-#   NIC2 (ens192): net-k8s-workload (VLAN 36) - DHCP attivo, default route
-# IMPORTANTE: L'ordine qui definisce quale NIC è "adapter 1" in vSphere e quindi ens160
+#   NIC1 (ens192): net-k8s-services (VLAN 37) - NO DHCP (MetalLB LoadBalancer IPs, L2-only)
+#   NIC2 (ens224): net-k8s-workload (VLAN 36) - DHCP attivo, default route
+# IMPORTANTE: Ubuntu enumera VMware NICs come ens192 (adapter 1) e ens224 (adapter 2)
 network:
   - /DATACENTER01/network/net-k8s-services
   - /DATACENTER01/network/net-k8s-workload
@@ -127,10 +127,9 @@ cloudConfig: |
   
   # Script per aggiornamenti automatici periodici
   write_files:
-    # Configura entrambe le NIC in modo identico - DHCP deciderà quale si attiva
-    # Una NIC è su net-k8s-services (VLAN 37, NO DHCP) - rimane L2-only per MetalLB
-    # L'altra è su net-k8s-workload (VLAN 36, DHCP attivo) - ottiene IP e default route
-    # Non sappiamo a priori quale interfaccia (ens160/ens192) mappa a quale VLAN
+    # Configura entrambe le NIC con DHCP - quella con server risponderà
+    # ens192: net-k8s-services (VLAN 37, NO DHCP) - rimane L2-only per MetalLB
+    # ens224: net-k8s-workload (VLAN 36, DHCP attivo) - ottiene IP e default route
     - path: /etc/netplan/99-k8s-network.yaml
       content: |
         network:
