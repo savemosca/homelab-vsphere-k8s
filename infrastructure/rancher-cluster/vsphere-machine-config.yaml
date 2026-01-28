@@ -29,7 +29,7 @@ pool: /DATACENTER01/host/CLUSTER01/Resources
 
 # Network - Control Plane su management network
 network:
-  - /DATACENTER01/network/net-k8s-management
+  - /DATACENTER01/network/net-k8s-vid35-management
 
 # VM template - Ubuntu 24.04 LTS dalla Content Library
 contentLibrary: cnt-lbr-k8s-esxi01
@@ -88,12 +88,12 @@ folder: /DATACENTER01/vm/Kubernetes VMs/k8s-workers
 pool: /DATACENTER01/host/CLUSTER01/Resources
 
 # Network - Dual NIC (workload deve essere NIC1 dentro alla VM)
-#   NIC1 (ens192): net-k8s-workload (VLAN 36) - DHCP attivo, default route
-#   NIC2 (ens224): net-k8s-services (VLAN 37) - NO DHCP (MetalLB L2-only)
-# Nota: abbiamo messo il portgroup workload per primo così vSphere lo crea come adapter 1
+#   NIC1 (ens192): net-k8s-vid36-workload (VLAN 36) - DHCP attivo, default route
+#   NIC2 (ens224): net-k8s-vid37-services (VLAN 37) - NO DHCP (MetalLB L2-only)
+# Nota: workload elencata per prima così resta adapter 1
 network:
-  - /DATACENTER01/network/net-k8s-workload
-  - /DATACENTER01/network/net-k8s-services
+  - /DATACENTER01/network/net-k8s-vid36-workload
+  - /DATACENTER01/network/net-k8s-vid37-services
 
 # VM template - Ubuntu 24.04 LTS dalla Content Library
 contentLibrary: cnt-lbr-k8s-esxi01
@@ -212,11 +212,11 @@ folder: /DATACENTER01/vm/Kubernetes VMs/k8s-workers
 pool: /DATACENTER01/host/CLUSTER01/Resources
 
 # Network - Dual NIC (stesso setup dei worker standard, workload come NIC1)
-#   NIC1 (ens192): net-k8s-workload (VLAN 36) - DHCP attivo, default route
-#   NIC2 (ens224): net-k8s-services (VLAN 37) - NO DHCP (MetalLB L2-only)
+#   NIC1 (ens192): net-k8s-vid36-workload (VLAN 36) - DHCP attivo, default route
+#   NIC2 (ens224): net-k8s-vid37-services (VLAN 37) - NO DHCP (MetalLB L2-only)
 network:
-  - /DATACENTER01/network/net-k8s-workload
-  - /DATACENTER01/network/net-k8s-services
+  - /DATACENTER01/network/net-k8s-vid36-workload
+  - /DATACENTER01/network/net-k8s-vid37-services
 
 # VM template - Ubuntu 24.04 LTS dalla Content Library
 contentLibrary: cnt-lbr-k8s-esxi01
