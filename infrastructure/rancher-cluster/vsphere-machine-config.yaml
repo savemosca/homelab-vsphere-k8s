@@ -131,6 +131,8 @@ cloudConfig: |
     # ens192: net-k8s-workload (VLAN 36, DHCP attivo) - ottiene IP e default route
     # ens224: net-k8s-services (VLAN 37, NO DHCP) - rimane L2-only per MetalLB
     - path: /etc/netplan/99-k8s-network.yaml
+      permissions: '0600'
+      owner: root:root
       content: |
         network:
           version: 2
