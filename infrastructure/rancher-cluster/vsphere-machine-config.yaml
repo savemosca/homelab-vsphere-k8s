@@ -87,13 +87,13 @@ datastore: datastore02-local-raid
 folder: /DATACENTER01/vm/Kubernetes VMs/k8s-workers
 pool: /DATACENTER01/host/CLUSTER01/Resources
 
-# Network - Dual NIC:
-#   NIC1 (ens192): net-k8s-services (VLAN 37) - NO DHCP (MetalLB LoadBalancer IPs, L2-only)
-#   NIC2 (ens224): net-k8s-workload (VLAN 36) - DHCP attivo, default route
+# Network - Dual NIC (ordine invertito per mapping più intuitivo):
+#   NIC1 (ens192): net-k8s-workload (VLAN 36) - DHCP attivo, default route
+#   NIC2 (ens224): net-k8s-services (VLAN 37) - NO DHCP (MetalLB LoadBalancer IPs, L2-only)
 # IMPORTANTE: Ubuntu enumera VMware NICs come ens192 (adapter 1) e ens224 (adapter 2)
 network:
-  - /DATACENTER01/network/net-k8s-services
   - /DATACENTER01/network/net-k8s-workload
+  - /DATACENTER01/network/net-k8s-services
 
 # VM template - Ubuntu 24.04 LTS dalla Content Library
 contentLibrary: cnt-lbr-k8s-esxi01
@@ -128,8 +128,8 @@ cloudConfig: |
   # Script per aggiornamenti automatici periodici
   write_files:
     # Configura entrambe le NIC con DHCP - quella con server risponderà
-    # ens192: net-k8s-services (VLAN 37, NO DHCP) - rimane L2-only per MetalLB
-    # ens224: net-k8s-workload (VLAN 36, DHCP attivo) - ottiene IP e default route
+    # ens192: net-k8s-workload (VLAN 36, DHCP attivo) - ottiene IP e default route
+    # ens224: net-k8s-services (VLAN 37, NO DHCP) - rimane L2-only per MetalLB
     - path: /etc/netplan/99-k8s-network.yaml
       content: |
         network:
